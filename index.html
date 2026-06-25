@@ -556,6 +556,19 @@ $('sps').oninput=e=>$('spsVal').textContent=e.target.value;
 $('brollEvery').oninput=e=>$('brollEveryVal').textContent=e.target.value;
 $('insetPos').onchange=()=>{ if(scenes.length){renderScenes();} };
 
+/* ---------- TOAST vizibil (alert e blocat in iframe sandboxat / Canvas) ---------- */
+function toast(msg, isError){
+  let t=document.getElementById('lfsToast');
+  if(!t){ t=document.createElement('div'); t.id='lfsToast';
+    t.style.cssText='position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:99999;max-width:90%;padding:12px 18px;border-radius:10px;font:600 14px system-ui,Arial;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.45);transition:opacity .3s;opacity:0;pointer-events:none';
+    document.body.appendChild(t);
+  }
+  t.style.background=isError?'#3a1620':'#1b2336';
+  t.style.border='1px solid '+(isError?'#ff5d6c':'#6c5cff');
+  t.textContent=msg; t.style.opacity='1';
+  clearTimeout(t._h); t._h=setTimeout(()=>{ t.style.opacity='0'; }, 4500);
+}
+
 /* ---------- API ACCESS ---------- */
 /* localStorage poate arunca SecurityError intr-un iframe sandboxat (Gemini Canvas).
    Le accesam DOAR prin aceste wrappere protejate, ca scriptul sa nu crape la incarcare. */
@@ -591,7 +604,7 @@ refreshKeyStatus();
 /* ---------- GEMINI CALLS ---------- */
 const BASE='https://generativelanguage.googleapis.com/v1beta/models/';
 async function geminiText(prompt){
-  const key=getKey(); if(!key) throw new Error('Lipseste cheia API.');
+  const key=getKey();
   const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+key,{
     method:'POST',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
@@ -602,7 +615,7 @@ async function geminiText(prompt){
   return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
 }
 async function geminiImage(prompt, refImages){
-  const key=getKey(); if(!key) throw new Error('Lipseste cheia API. Adaug-o in Setup.');
+  const key=getKey();
   const model=$('imgModel').value;
   if(model.indexOf('imagen')===0){
     const r=await fetch(BASE+model+':predict?key='+key,{
@@ -657,10 +670,10 @@ function renderChars(){
   wrap.querySelectorAll('button[data-act=del]').forEach(b=>b.onclick=()=>{characters.splice(+b.dataset.i,1);renderChars();});
   wrap.querySelectorAll('button[data-act=ref]').forEach(b=>b.onclick=()=>genCharRef(+b.dataset.i));
 }
-$('addChar').onclick=()=>{ if(characters.length>=3){alert('Maxim 3 personaje.');return;} characters.push({name:'',desc:'',img:null}); renderChars(); };
+$('addChar').onclick=()=>{ if(characters.length>=3){toast('Maxim 3 personaje.',true);return;} characters.push({name:'',desc:'',img:null}); renderChars(); };
 async function genCharRef(i){
   const c=characters[i];
-  if(!c.desc.trim()){alert('Scrie o descriere pentru personaj.');return;}
+  if(!c.desc.trim()){toast('Scrie o descriere pentru personaj.',true);return;}
   const st=STYLES[styleSel.value];
   $('charStat').textContent='Generez referinta pentru '+(c.name||('#'+(i+1)))+'...';
   try{
@@ -694,7 +707,7 @@ function blobToBase64(blob){
 }
 /* ---------- TRANSCRIERE VOICEOVER -> segmente cu timp real (Gemini) ---------- */
 async function geminiTranscribeSegments(targetSec){
-  const key=getKey(); if(!key) throw new Error('Lipseste cheia API.');
+  const key=getKey();
   if(!audioBlob) throw new Error('Incarca sau genereaza un voiceover intai.');
   const b64=await blobToBase64(audioBlob);
   const mime=(audioMime&&audioMime.indexOf('audio')===0)?audioMime:'audio/mpeg';
@@ -719,8 +732,10 @@ async function geminiTranscribeSegments(targetSec){
   return segs;
 }
 async function transcribeAndSegment(){
-  if(!audioBlob){ alert('Incarca sau genereaza un voiceover intai.'); return; }
-  $('segmentVO').disabled=true; $('genStat').textContent='Transcriu voiceover-ul si segmentez pe el...';
+  if(!audioBlob){ toast('Incarca intai voiceover-ul in campul "Audio naratiune" (sectiunea 2).',true); $('audioInfo').textContent='Nu am gasit voiceover incarcat. Foloseste campul "Audio naratiune" si selecteaza fisierul tau, apoi apasa din nou.'; return; }
+  $('segmentVO').disabled=true;
+  toast('Transcriu voiceover-ul si segmentez pe el...');
+  $('ttsStat').textContent='Transcriere in curs...';
   $('audioInfo').textContent='Transcriere in curs (poate dura putin pentru voiceover lung)...';
   try{
     const targetSec=parseFloat($('sps').value)||STYLES[styleSel.value].sec||6;
@@ -747,8 +762,10 @@ async function transcribeAndSegment(){
     if(every>0){ scenes.forEach((s,i)=>{ if((i+1)%every===0 && !s.isHook) s.broll=true; }); applyInsetVariety(); }
     renderScenes(); $('sceneCard').style.display='block';
     $('genStat').textContent=scenes.length+' scene din transcriere, sincronizate exact pe voiceover ('+audioDur.toFixed(1)+'s). Ruleaza AI Director apoi genereaza imaginile.';
-    $('audioInfo').textContent='Transcriere gata: '+scenes.length+' segmente sincronizate pe voce.';
-  }catch(e){ $('genStat').textContent='Eroare transcriere: '+e.message; $('audioInfo').textContent='Transcriere esuata: '+e.message; }
+    $('ttsStat').textContent='Gata: '+scenes.length+' segmente.';
+    $('audioInfo').textContent='Transcriere gata: '+scenes.length+' segmente sincronizate pe voce. Vezi sectiunea 3 (Scene).';
+    toast(scenes.length+' scene sincronizate pe voiceover. Vezi sectiunea Scene.');
+  }catch(e){ $('ttsStat').textContent='Eroare: '+e.message; $('audioInfo').textContent='Transcriere esuata: '+e.message; toast('Transcriere esuata: '+e.message,true); }
   finally{ $('segmentVO').disabled=false; }
 }
 $('segmentVO').onclick=transcribeAndSegment;
@@ -790,7 +807,7 @@ function encodeWAV(samples, sampleRate){
   return new Blob([buf],{type:'audio/wav'});
 }
 async function geminiTTS(text, voice, tries){
-  const key=getKey(); if(!key) throw new Error('Lipseste cheia API.');
+  const key=getKey();
   tries=tries||3; let lastErr='Eroare TTS';
   for(let attempt=1; attempt<=tries; attempt++){
     try{
@@ -831,7 +848,7 @@ async function synthAdaptive(prefix, text, voice, onNote, depth){
   }
 }
 $('genTTS').onclick=async()=>{
-  const txt=$('script').value.trim(); if(!txt){alert('Lipeste un script intai.');return;}
+  const txt=$('script').value.trim(); if(!txt){toast('Lipeste un script intai (sectiunea 2).',true);return;}
   $('genTTS').disabled=true;
   const vp = NICHE_VOICE[nicheSel.value] || {voice:'Charon', style:'in a clear, natural narration tone'};
   const sel=$('ttsVoice').value; const voice=(!sel||sel==='auto')?vp.voice:sel;
@@ -895,7 +912,7 @@ function recalcDurations(){
   else scenes.forEach((s,i)=>s.dur=rts[i]);
 }
 $('segment').onclick=()=>{
-  const txt=$('script').value.trim(); if(!txt){alert('Lipeste un script intai.');return;}
+  const txt=$('script').value.trim(); if(!txt){toast('Lipeste un script intai, sau foloseste "Transcrie + Segmenteaza pe voiceover".',true);return;}
   const sents=splitSentences(txt);
   const targetSec=parseFloat($('sps').value)||STYLES[styleSel.value].sec||6;
   const groups=buildGroups(sents, targetSec);
@@ -918,7 +935,7 @@ $('segment').onclick=()=>{
 
 /* ---------- AI DIRECTOR (editor profesionist) ---------- */
 $('aiDirector').onclick=async()=>{
-  if(!scenes.length){alert('Segmenteaza scriptul intai.');return;}
+  if(!scenes.length){toast('Segmenteaza scriptul intai (sau transcrie pe voiceover).',true);return;}
   $('aiDirector').disabled=true; $('genStat').textContent='AI Director analizeaza scriptul...';
   try{
     const numbered=scenes.map((s,i)=>(i+1)+'. '+s.text).join('\n');
@@ -1048,7 +1065,7 @@ async function genOne(i,refreshUI){
   }catch(e){ $('genStat').textContent='Scena '+(i+1)+': '+e.message; throw e; }
 }
 $('genAll').onclick=async()=>{
-  if(!scenes.length){alert('Segmenteaza scriptul intai.');return;}
+  if(!scenes.length){toast('Segmenteaza scriptul intai (sau transcrie pe voiceover).',true);return;}
   $('genAll').disabled=true;
   for(let i=0;i<scenes.length;i++){
     $('genStat').textContent='Generez '+(i+1)+'/'+scenes.length+'...';
@@ -1381,7 +1398,7 @@ function loop(now){
   $('renderStat').textContent='Scena '+(idx+1)+'/'+scenes.length+' \u00b7 '+t.toFixed(1)+'/'+totalDur.toFixed(1)+'s';
   raf=requestAnimationFrame(loop);
 }
-function startPlay(){ if(!scenes.length||!imgCache.some(Boolean)){alert('Genereaza imaginile intai.');return;} calcTotal(); lastScene=-1; insetPlayed.clear(); startT=performance.now(); if(audioEl){try{audioEl.currentTime=0;audioEl.play();}catch(e){}} raf=requestAnimationFrame(loop); }
+function startPlay(){ if(!scenes.length||!imgCache.some(Boolean)){toast('Genereaza imaginile intai.',true);return;} calcTotal(); lastScene=-1; insetPlayed.clear(); startT=performance.now(); if(audioEl){try{audioEl.currentTime=0;audioEl.play();}catch(e){}} raf=requestAnimationFrame(loop); }
 function stopPlay(){ if(raf)cancelAnimationFrame(raf); raf=null; if(audioEl)audioEl.pause(); }
 $('play').onclick=startPlay; $('stop').onclick=stopPlay;
 
@@ -1481,7 +1498,7 @@ async function exportTurbo(fps,bitrate){
   $('renderStat').textContent='Export Turbo gata: '+(blob.size/1e6).toFixed(1)+' MB.';
 }
 $('export').onclick=async()=>{
-  if(!scenes.length||!imgCache.some(Boolean)){alert('Genereaza imaginile intai.');return;}
+  if(!scenes.length||!imgCache.some(Boolean)){toast('Genereaza imaginile intai.',true);return;}
   calcTotal(); const fps=parseInt($('expFps').value,10), bitrate=parseInt($('expBitrate').value,10), mode=$('expMode').value;
   $('export').disabled=true;
   try{
@@ -1501,13 +1518,13 @@ $('export').onclick=async()=>{
 /* ---------- SRT + CAPITOLE ---------- */
 function srtTime(t){ const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=Math.floor(t%60),ms=Math.round((t%1)*1000); const p=(n,l)=>String(n).padStart(l||2,'0'); return p(h)+':'+p(m)+':'+p(s)+','+p(ms,3); }
 $('exportSrt').onclick=()=>{
-  if(!scenes.length){alert('Segmenteaza scriptul intai.');return;}
+  if(!scenes.length){toast('Segmenteaza scriptul intai.',true);return;}
   let out='',acc=0; scenes.forEach((sc,i)=>{ const start=acc,end=acc+sc.dur; acc=end; out+=(i+1)+'\n'+srtTime(start)+' --> '+srtTime(end)+'\n'+sc.text.trim()+'\n\n'; });
   downloadBlob(new Blob([out],{type:'text/plain'}),'longform-captions-'+Date.now()+'.srt',$('renderStat'));
 };
 function chTime(t){ const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=Math.floor(t%60); const p=(n)=>String(n).padStart(2,'0'); return (h>0?p(h)+':':'')+p(m)+':'+p(s); }
 $('exportChapters').onclick=async()=>{
-  if(!scenes.length){alert('Segmenteaza scriptul intai.');return;}
+  if(!scenes.length){toast('Segmenteaza scriptul intai.',true);return;}
   $('renderStat').textContent='Generez capitole...';
   try{
     const blocks=[]; let acc=0, bstart=0, btext='';
@@ -1560,8 +1577,8 @@ $('loadProj').onchange=e=>{
       insetShape:x.insetShape||'rounded',insetHold:x.insetHold||3,insetSfx:x.insetSfx||'whoosh',insetVol:x.insetVol||0.16,
       emphasis:x.emphasis||'',focus:x.focus||null,emphasisCue:x.emphasisCue||'',isHook:!!x.isHook,manual:!!x.manual}));
     if(scenes.length){renderScenes();$('sceneCard').style.display='block';preloadImages();}
-    alert('Proiect incarcat: '+scenes.length+' scene.');
-  }catch(err){alert('Fisier invalid: '+err.message);} };
+    toast('Proiect incarcat: '+scenes.length+' scene.');
+  }catch(err){toast('Fisier invalid: '+err.message,true);} };
   rd.readAsText(f);
 };
 

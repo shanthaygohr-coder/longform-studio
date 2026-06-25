@@ -4,6 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>LongForm Studio · AI Faceless Video Engine</title>
+<!-- Muxer pentru export rapid (Turbo / WebCodecs) - se incarca direct, ca sa mearga si in Canvas -->
+<script src="https://unpkg.com/webm-muxer/build/webm-muxer.js"></script>
 <style>
   :root{
     --bg:#0b0f1a; --panel:#121826; --panel2:#0e1420; --border:#1f2a3d;
@@ -259,7 +261,7 @@
       </div>
       <div>
         <label>Mod export</label>
-        <select id="expMode"><option value="realtime" selected>Real-time (sigur, oriunde)</option><option value="webcodecs">Turbo WebCodecs (doar local)</option></select>
+        <select id="expMode"><option value="webcodecs" selected>Turbo (rapid, recomandat)</option><option value="realtime">Real-time (fallback)</option></select>
       </div>
     </div>
     <div class="toolbar">
@@ -1532,7 +1534,7 @@ function loadMuxer(){
     if(window.WebMMuxer&&window.WebMMuxer.Muxer){return resolve(true);}
     if(muxerLoadTried){return resolve(muxerLoadOk);}
     muxerLoadTried=true;
-    const urls=['https://cdn.jsdelivr.net/npm/webm-muxer@5.0.3/build/webm-muxer.min.js','https://unpkg.com/webm-muxer@5.0.3/build/webm-muxer.js'];
+    const urls=['https://unpkg.com/webm-muxer/build/webm-muxer.js','https://cdn.jsdelivr.net/npm/webm-muxer@5.0.3/build/webm-muxer.min.js'];
     let i=0; const tryNext=()=>{ if(i>=urls.length){return resolve(false);} const s=document.createElement('script'); s.src=urls[i++];
       s.onload=()=>{ if(window.WebMMuxer&&window.WebMMuxer.Muxer){muxerLoadOk=true;return resolve(true);} tryNext(); };
       s.onerror=()=>tryNext(); document.head.appendChild(s); };
@@ -1579,17 +1581,16 @@ async function exportTurbo(fps,bitrate){
 }
 $('export').onclick=async()=>{
   if(!scenes.length||!imgCache.some(Boolean)){toast('Genereaza imaginile intai.',true);return;}
-  calcTotal(); const fps=parseInt($('expFps').value,10), bitrate=parseInt($('expBitrate').value,10); let mode=$('expMode').value;
-  const inIframe=(function(){ try{ return window.self!==window.top; }catch(e){ return true; } })();
-  if(mode==='webcodecs' && inIframe){ mode='realtime'; toast('Turbo nu functioneaza in Canvas (CSP) -> folosesc Real-time.'); $('renderStat').textContent='Turbo indisponibil in Canvas -> Real-time.'; }
+  calcTotal(); const fps=parseInt($('expFps').value,10), bitrate=parseInt($('expBitrate').value,10); const mode=$('expMode').value;
   $('export').disabled=true;
   try{
-    if(mode==='webcodecs' && typeof window.VideoEncoder==='function'){
-      $('renderStat').textContent='Verific Turbo (incarc muxer)...';
+    if(mode!=='realtime' && typeof window.VideoEncoder==='function'){
+      $('renderStat').textContent='Export Turbo (rapid, fara redare)...';
       const ok=await loadMuxer();
       if(ok && window.WebMMuxer && typeof window.WebMMuxer.Muxer==='function'){
-        try{ await exportTurbo(fps,bitrate); return; }catch(te){ $('renderStat').textContent='Turbo a esuat ('+te.message+') -> real-time.'; }
-      }else{ $('renderStat').textContent='Turbo indisponibil in acest mediu -> am folosit real-time.'; }
+        try{ await exportTurbo(fps,bitrate); return; }
+        catch(te){ $('renderStat').textContent='Turbo a esuat ('+te.message+') -> real-time.'; toast('Turbo a esuat -> real-time.',true); }
+      }else{ $('renderStat').textContent='Muxer indisponibil -> real-time.'; toast('Muxer indisponibil -> real-time.',true); }
     }
     await exportRealtime(fps,bitrate);
   }catch(e){ $('renderStat').textContent='Eroare export: '+e.message; toast('Eroare export: '+e.message,true); }

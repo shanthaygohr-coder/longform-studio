@@ -1442,6 +1442,26 @@ function downloadBlob(blob, filename, statusEl){
     statusEl.appendChild(link);
   }
 }
+/* arata rezultatul ca video redabil + link (in Canvas download automat e blocat) */
+function showResultVideo(blob){
+  const url=URL.createObjectURL(blob);
+  let v=document.getElementById('resultVid');
+  if(!v){
+    v=document.createElement('video'); v.id='resultVid'; v.controls=true; v.playsInline=true;
+    v.style.cssText='width:100%;border-radius:12px;margin-top:12px;background:#000;display:block';
+    const anchor=$('renderStat'); anchor.parentNode.insertBefore(v, anchor.nextSibling);
+  }
+  v.src=url;
+  let dl=document.getElementById('resultDl');
+  if(!dl){
+    dl=document.createElement('a'); dl.id='resultDl';
+    dl.style.cssText='display:inline-block;margin-top:10px;color:#8b7dff;font-weight:700;font-size:13px';
+    v.parentNode.insertBefore(dl, v.nextSibling);
+  }
+  dl.href=url; dl.download='longform-'+Date.now()+'.webm'; dl.target='_blank';
+  dl.textContent='\u2b07 Descarca video (.webm) \u2014 sau click-dreapta pe video > Save video as';
+  try{ v.scrollIntoView({behavior:'smooth',block:'center'}); }catch(e){}
+}
 
 /* ---------- EXPORT ---------- */
 let recDest=null;
@@ -1463,14 +1483,17 @@ async function exportRealtime(fps,bitrate){
   const vbuf=await getVoiceBuffer();
   voiceSrcGlobal=null;
   if(vbuf){ const vs=c.createBufferSource(); vs.buffer=vbuf; const vg=c.createGain(); vg.gain.setValueAtTime(1.0,c.currentTime); vs.connect(vg); vg.connect(recDest); vg.connect(c.destination); voiceSrcGlobal=vs; }
+  else if(audioEl){ try{ if(!audioEl._srcNode){ audioEl._srcNode=c.createMediaElementSource(audioEl); } audioEl._srcNode.connect(recDest); audioEl._srcNode.connect(c.destination); }catch(e){} }
   recDest.stream.getAudioTracks().forEach(tr=>stream.addTrack(tr));
   const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm';
   const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});
   const chunks=[]; rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
   rec.onstop=()=>{
     const blob=new Blob(chunks,{type:'video/webm'});
-    downloadBlob(blob,'longform-'+Date.now()+'.webm',$('renderStat'));
-    $('renderStat').textContent='Export gata: '+(blob.size/1e6).toFixed(1)+' MB. Daca nu porneste descarcarea, apasa linkul manual.';
+    showResultVideo(blob);
+    try{ downloadBlob(blob,'longform-'+Date.now()+'.webm',null); }catch(e){}
+    $('renderStat').textContent='Export gata: '+(blob.size/1e6).toFixed(1)+' MB. Apasa Play pe video (ai si sunet) sau Descarca mai jos.';
+    toast('Export gata. Vezi video-ul redabil mai jos (cu sunet).');
   };
   rec.start(2000);
   lastScene=-1; insetPlayed.clear(); startT=performance.now();
@@ -1534,12 +1557,15 @@ async function exportTurbo(fps,bitrate){
   }
   await venc.flush(); muxer.finalize();
   const blob=new Blob([muxer.target.buffer],{type:'video/webm'});
-  downloadBlob(blob,'longform-turbo-'+Date.now()+'.webm',$('renderStat'));
-  $('renderStat').textContent='Export Turbo gata: '+(blob.size/1e6).toFixed(1)+' MB.';
+  showResultVideo(blob);
+  try{ downloadBlob(blob,'longform-turbo-'+Date.now()+'.webm',null); }catch(e){}
+  $('renderStat').textContent='Export Turbo gata: '+(blob.size/1e6).toFixed(1)+' MB. Apasa Play pe video sau Descarca mai jos.';
 }
 $('export').onclick=async()=>{
   if(!scenes.length||!imgCache.some(Boolean)){toast('Genereaza imaginile intai.',true);return;}
-  calcTotal(); const fps=parseInt($('expFps').value,10), bitrate=parseInt($('expBitrate').value,10), mode=$('expMode').value;
+  calcTotal(); const fps=parseInt($('expFps').value,10), bitrate=parseInt($('expBitrate').value,10); let mode=$('expMode').value;
+  const inIframe=(function(){ try{ return window.self!==window.top; }catch(e){ return true; } })();
+  if(mode==='webcodecs' && inIframe){ mode='realtime'; toast('Turbo nu functioneaza in Canvas (CSP) -> folosesc Real-time.'); $('renderStat').textContent='Turbo indisponibil in Canvas -> Real-time.'; }
   $('export').disabled=true;
   try{
     if(mode==='webcodecs' && typeof window.VideoEncoder==='function'){
@@ -1550,7 +1576,7 @@ $('export').onclick=async()=>{
       }else{ $('renderStat').textContent='Turbo indisponibil in acest mediu -> am folosit real-time.'; }
     }
     await exportRealtime(fps,bitrate);
-  }catch(e){ $('renderStat').textContent='Eroare export: '+e.message; }
+  }catch(e){ $('renderStat').textContent='Eroare export: '+e.message; toast('Eroare export: '+e.message,true); }
   finally{ $('export').disabled=false; }
 };
 

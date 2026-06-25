@@ -167,7 +167,7 @@
     </div>
 
     <div style="margin-top:18px">
-      <label>Naratiunea (scriptul tau &middot; cifre scrise cu litere, ~4000+ cuvinte)</label>
+      <label>Naratiunea (optional daca ai voiceover) &middot; folosita la subtitrari, prompturi si segmentare fara audio</label>
       <textarea id="script" placeholder="Lipeste aici scriptul de naratiune (suporta scripturi lungi)..."></textarea>
       <div class="toolbar"><span class="stat" id="scriptStat"></span></div>
     </div>
@@ -198,6 +198,7 @@
             <option value="Fenrir">Fenrir (excitabil)</option>
           </select>
           <button class="ghost sm" id="genTTS">&#127908; TTS (optional)</button>
+          <button class="sm" id="segmentVO">&#127908; Transcrie + Segmenteaza pe voiceover</button>
           <span class="stat" id="ttsStat"></span>
         </div>
       </div>
@@ -675,18 +676,82 @@ function charsInText(text){
 
 
 /* ---------- AUDIO ---------- */
-let audioEl=null, audioDur=0, audioURL=null;
+let audioEl=null, audioDur=0, audioURL=null, audioBlob=null, audioMime='';
 $('audio').onchange=e=>{
   const f=e.target.files[0]; if(!f) return;
   if(audioURL) URL.revokeObjectURL(audioURL);
   audioURL=URL.createObjectURL(f);
+  audioBlob=f; audioMime=f.type||'audio/mpeg';
   audioEl=new Audio(audioURL);
   audioEl.onloadedmetadata=()=>{
     audioDur=audioEl.duration;
-    $('audioInfo').textContent='Voiceover: '+audioDur.toFixed(1)+'s. Apasa "Segmenteaza" - scenele se sincronizeaza exact pe voiceover.';
+    $('audioInfo').textContent='Voiceover: '+audioDur.toFixed(1)+'s. Apasa "Transcrie + Segmenteaza" ca scenele sa urmeze EXACT vocea.';
     if(scenes.length){ recalcDurations(); renderScenes(); }
   };
 };
+function blobToBase64(blob){
+  return new Promise((res,rej)=>{ const fr=new FileReader(); fr.onload=()=>{ const s=fr.result; const m=/^data:[^;]+;base64,(.*)$/.exec(s); res(m?m[1]:''); }; fr.onerror=rej; fr.readAsDataURL(blob); });
+}
+/* ---------- TRANSCRIERE VOICEOVER -> segmente cu timp real (Gemini) ---------- */
+async function geminiTranscribeSegments(targetSec){
+  const key=getKey(); if(!key) throw new Error('Lipseste cheia API.');
+  if(!audioBlob) throw new Error('Incarca sau genereaza un voiceover intai.');
+  const b64=await blobToBase64(audioBlob);
+  const mime=(audioMime&&audioMime.indexOf('audio')===0)?audioMime:'audio/mpeg';
+  const prompt='Transcribe this narration audio EXACTLY (verbatim, original language). '
+    +'Then split the transcription into sequential on-screen caption segments of about '+targetSec+' seconds each, aligned to natural sentence/clause boundaries so each segment maps to one scene. '
+    +'Return STRICT JSON only, no extra text: {"segments":[{"start":0.0,"end":4.2,"text":"..."}]} . '
+    +'Timestamps are in SECONDS from the very start of the audio, must be increasing and cover the whole audio with no gaps or overlaps. Do not invent words that are not spoken.';
+  const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+key,{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{inlineData:{mimeType:mime,data:b64}},{text:prompt}]}]})
+  });
+  const raw=await r.text(); let j; try{ j=JSON.parse(raw); }catch(e){ throw new Error('raspuns invalid de la model'); }
+  if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare transcriere');
+  let out=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
+  out=out.replace(/```json/gi,'').replace(/```/g,'').trim();
+  const m=out.match(/\{[\s\S]*\}/); if(!m) throw new Error('Modelul nu a returnat segmente.');
+  const data=JSON.parse(m[0]);
+  let segs=(data.segments||[]).filter(s=>s && typeof s.text==='string' && s.text.trim());
+  if(!segs.length) throw new Error('Transcriere goala.');
+  segs.forEach(s=>{ s.start=Math.max(0,+s.start||0); s.end=Math.max(s.start+0.4,+s.end||s.start+0.4); s.text=s.text.trim(); });
+  segs.sort((a,b)=>a.start-b.start);
+  return segs;
+}
+async function transcribeAndSegment(){
+  if(!audioBlob){ alert('Incarca sau genereaza un voiceover intai.'); return; }
+  $('segmentVO').disabled=true; $('genStat').textContent='Transcriu voiceover-ul si segmentez pe el...';
+  $('audioInfo').textContent='Transcriere in curs (poate dura putin pentru voiceover lung)...';
+  try{
+    const targetSec=parseFloat($('sps').value)||STYLES[styleSel.value].sec||6;
+    const segs=await geminiTranscribeSegments(targetSec);
+    /* construim scenele direct din segmentele transcrise, cu durate REALE */
+    scenes=segs.map(sg=>Object.assign({text:sg.text, prompt:buildPrompt(sg.text), refs:charsInText(sg.text).map(c=>c.img).filter(Boolean),
+      img:null, inset:null, broll:false, weight:1, era:'', visual:'', grade:'', motion:null,
+      transition:$('transition').value, dur:Math.max(1.2,(sg.end-sg.start))}, defaultInset()));
+    if($('hookIntro') && $('hookIntro').checked){
+      const title=($('vidTitle').value.trim()||NICHES[nicheSel.value].label);
+      scenes.unshift(Object.assign({text:title, prompt:buildPrompt(title), refs:[], img:null, inset:null, broll:false,
+        weight:0.7, era:'', visual:'title card, '+title, grade:'', motion:'zoom_in', transition:'fadeblack', isHook:true, dur:3}, defaultInset()));
+    }
+    /* scalam exact pe lungimea voiceover-ului ca finalul sa pice perfect */
+    if(audioDur>0){
+      const body=scenes.filter(s=>!s.isHook); const sum=body.reduce((a,s)=>a+s.dur,0)||1;
+      const hookDur=scenes.filter(s=>s.isHook).reduce((a,s)=>a+s.dur,0);
+      const scale=Math.max(0.1,(audioDur-hookDur))/sum; body.forEach(s=>s.dur*=scale);
+    }
+    /* punem transcrierea si in caseta de script (pentru subtitrari/AI Director) */
+    if(!$('script').value.trim()){ $('script').value=segs.map(s=>s.text).join(' '); $('script').oninput(); }
+    assignMotions();
+    const every=parseInt($('brollEvery').value,10);
+    if(every>0){ scenes.forEach((s,i)=>{ if((i+1)%every===0 && !s.isHook) s.broll=true; }); applyInsetVariety(); }
+    renderScenes(); $('sceneCard').style.display='block';
+    $('genStat').textContent=scenes.length+' scene din transcriere, sincronizate exact pe voiceover ('+audioDur.toFixed(1)+'s). Ruleaza AI Director apoi genereaza imaginile.';
+    $('audioInfo').textContent='Transcriere gata: '+scenes.length+' segmente sincronizate pe voce.';
+  }catch(e){ $('genStat').textContent='Eroare transcriere: '+e.message; $('audioInfo').textContent='Transcriere esuata: '+e.message; }
+  finally{ $('segmentVO').disabled=false; }
+}
+$('segmentVO').onclick=transcribeAndSegment;
 
 /* ---------- TTS (optional, chunking + auto-split) ---------- */
 function splitForTTS(txt, maxWords){
@@ -786,6 +851,7 @@ $('genTTS').onclick=async()=>{
     const blob=encodeWAV(all, rate);
     if(audioURL) URL.revokeObjectURL(audioURL);
     audioURL=URL.createObjectURL(blob); audioEl=new Audio(audioURL); audioDur=all.length/rate;
+    audioBlob=blob; audioMime='audio/wav';
     $('audioInfo').textContent='Voiceover generat: '+audioDur.toFixed(1)+'s. Apasa "Segmenteaza".';
     $('ttsStat').textContent='Gata.';
     if(scenes.length){ recalcDurations(); renderScenes(); }

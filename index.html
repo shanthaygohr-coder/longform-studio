@@ -556,12 +556,17 @@ $('brollEvery').oninput=e=>$('brollEveryVal').textContent=e.target.value;
 $('insetPos').onchange=()=>{ if(scenes.length){renderScenes();} };
 
 /* ---------- API ACCESS ---------- */
+/* localStorage poate arunca SecurityError intr-un iframe sandboxat (Gemini Canvas).
+   Le accesam DOAR prin aceste wrappere protejate, ca scriptul sa nu crape la incarcare. */
+function lsGet(k){ try{ return (typeof localStorage!=='undefined') ? localStorage.getItem(k) : null; }catch(e){ return null; } }
+function lsSet(k,v){ try{ if(typeof localStorage!=='undefined') localStorage.setItem(k,v); }catch(e){} }
+function envKey(){ try{ return (typeof process!=='undefined' && process.env && (process.env.API_KEY||process.env.GEMINI_API_KEY)) || ''; }catch(e){ return ''; } }
 function getKey(){
   const el=document.getElementById('apiKey');
   return (el && el.value.trim())
     || (typeof window!=='undefined' && window.GEMINI_API_KEY)
-    || (typeof process!=='undefined' && process.env && (process.env.API_KEY||process.env.GEMINI_API_KEY))
-    || (typeof localStorage!=='undefined' && localStorage.getItem('lfs_key'))
+    || envKey()
+    || lsGet('lfs_key')
     || '';
 }
 function refreshKeyStatus(){
@@ -571,12 +576,14 @@ function refreshKeyStatus(){
   el.className='keystatus '+(ok?'ok':'no');
 }
 (function(){
-  const saved = (typeof localStorage!=='undefined') && localStorage.getItem('lfs_key');
-  if(saved && $('apiKey')) $('apiKey').value=saved;
-  if($('apiKey')) $('apiKey').addEventListener('input',()=>{
-    try{ localStorage.setItem('lfs_key',$('apiKey').value.trim()); }catch(e){}
-    refreshKeyStatus();
-  });
+  try{
+    const saved = lsGet('lfs_key');
+    if(saved && $('apiKey')) $('apiKey').value=saved;
+    if($('apiKey')) $('apiKey').addEventListener('input',()=>{
+      lsSet('lfs_key',$('apiKey').value.trim());
+      refreshKeyStatus();
+    });
+  }catch(e){}
 })();
 refreshKeyStatus();
 

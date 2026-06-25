@@ -709,16 +709,21 @@ function blobToBase64(blob){
 async function geminiTranscribeSegments(targetSec){
   const key=getKey();
   if(!audioBlob) throw new Error('Incarca sau genereaza un voiceover intai.');
+  /* inline data are limita ~20MB pe cerere; base64 creste ~33%. Avertizam din timp. */
+  if(audioBlob.size > 14*1024*1024) throw new Error('voiceover prea mare ('+(audioBlob.size/1048576).toFixed(1)+'MB) pentru transcriere inline');
   const b64=await blobToBase64(audioBlob);
   const mime=(audioMime&&audioMime.indexOf('audio')===0)?audioMime:'audio/mpeg';
   const prompt='Transcribe this narration audio EXACTLY (verbatim, original language). '
     +'Then split the transcription into sequential on-screen caption segments of about '+targetSec+' seconds each, aligned to natural sentence/clause boundaries so each segment maps to one scene. '
     +'Return STRICT JSON only, no extra text: {"segments":[{"start":0.0,"end":4.2,"text":"..."}]} . '
     +'Timestamps are in SECONDS from the very start of the audio, must be increasing and cover the whole audio with no gaps or overlaps. Do not invent words that are not spoken.';
-  const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+key,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{inlineData:{mimeType:mime,data:b64}},{text:prompt}]}]})
-  });
+  let r;
+  try{
+    r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+key,{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({contents:[{parts:[{inlineData:{mimeType:mime,data:b64}},{text:prompt}]}]})
+    });
+  }catch(ne){ throw new Error('retea/proxy a respins cererea (probabil audio prea mare sau audio inline blocat in Canvas)'); }
   const raw=await r.text(); let j; try{ j=JSON.parse(raw); }catch(e){ throw new Error('raspuns invalid de la model'); }
   if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare transcriere');
   let out=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
@@ -765,7 +770,21 @@ async function transcribeAndSegment(){
     $('ttsStat').textContent='Gata: '+scenes.length+' segmente.';
     $('audioInfo').textContent='Transcriere gata: '+scenes.length+' segmente sincronizate pe voce. Vezi sectiunea 3 (Scene).';
     toast(scenes.length+' scene sincronizate pe voiceover. Vezi sectiunea Scene.');
-  }catch(e){ $('ttsStat').textContent='Eroare: '+e.message; $('audioInfo').textContent='Transcriere esuata: '+e.message; toast('Transcriere esuata: '+e.message,true); }
+  }catch(e){
+    $('ttsStat').textContent='Eroare: '+e.message;
+    /* fallback: daca avem scriptul, segmentam din el si scalam exact pe lungimea voiceover-ului */
+    if($('script').value.trim()){
+      const ok=segmentFromScript();
+      if(ok){
+        $('genStat').textContent=scenes.length+' scene din script, sincronizate pe lungimea voiceover-ului ('+audioDur.toFixed(1)+'s). (Transcrierea a esuat: '+e.message+')';
+        $('audioInfo').textContent='Transcrierea a esuat, am folosit scriptul sincronizat pe voce. Ruleaza AI Director apoi genereaza imaginile.';
+        toast('Transcriere indisponibila -> am segmentat din script, sincronizat pe voce.',true);
+        return;
+      }
+    }
+    $('audioInfo').textContent='Transcriere esuata: '+e.message+'. Lipeste scriptul in sectiunea 2 si reincearca (va fi sincronizat pe voce).';
+    toast('Transcriere esuata: '+e.message,true);
+  }
   finally{ $('segmentVO').disabled=false; }
 }
 $('segmentVO').onclick=transcribeAndSegment;
@@ -911,8 +930,8 @@ function recalcDurations(){
   if(audioDur>0){ const sum=rts.reduce((a,b)=>a+b,0)||1; const scale=audioDur/sum; scenes.forEach((s,i)=>s.dur=rts[i]*scale); }
   else scenes.forEach((s,i)=>s.dur=rts[i]);
 }
-$('segment').onclick=()=>{
-  const txt=$('script').value.trim(); if(!txt){toast('Lipeste un script intai, sau foloseste "Transcrie + Segmenteaza pe voiceover".',true);return;}
+function segmentFromScript(){
+  const txt=$('script').value.trim(); if(!txt) return false;
   const sents=splitSentences(txt);
   const targetSec=parseFloat($('sps').value)||STYLES[styleSel.value].sec||6;
   const groups=buildGroups(sents, targetSec);
@@ -929,8 +948,14 @@ $('segment').onclick=()=>{
   const every=parseInt($('brollEvery').value,10);
   if(every>0){ scenes.forEach((s,i)=>{ if((i+1)%every===0 && !s.isHook) s.broll=true; }); applyInsetVariety(); }
   renderScenes(); $('sceneCard').style.display='block';
+  return true;
+}
+$('segment').onclick=()=>{
+  if(!$('script').value.trim()){toast('Lipeste un script intai, sau foloseste "Transcrie + Segmenteaza pe voiceover".',true);return;}
+  segmentFromScript();
   const syncNote = audioDur>0 ? (' Sincronizat pe voiceover ('+audioDur.toFixed(1)+'s).') : ' Fara voiceover: durate dupa ritmul de citire.';
   $('genStat').textContent=scenes.length+' scene.'+syncNote;
+  toast(scenes.length+' scene generate.');
 };
 
 /* ---------- AI DIRECTOR (editor profesionist) ---------- */

@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Thumbnail Studio · Generator AI de thumbnail-uri profesionale</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo+Black&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0a0d14; --panel:#11151f; --panel2:#0d1119; --border:#222c3c;
+    --txt:#e8eef8; --muted:#8a97ad; --accent:#ff3b6b; --accent2:#ffd23b; --ok:#37d39b; --err:#ff5d6c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:radial-gradient(1100px 520px at 85% -8%,#171d2c,var(--bg));color:var(--txt);font:15px/1.5 Montserrat,system-ui,Segoe UI,Arial}
+  .wrap{max-width:1120px;margin:0 auto;padding:18px}
+  header{display:flex;gap:14px;align-items:center;padding:8px 4px 18px}
+  .logo{width:52px;height:52px;border-radius:14px;background:linear-gradient(135deg,#ff3b6b,#ffd23b);display:grid;place-items:center;font-size:26px;box-shadow:0 8px 30px rgba(255,59,107,.35)}
+  header h1{margin:0;font-size:22px;font-weight:900}
+  header p{margin:2px 0 0;color:var(--muted);font-size:13px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:18px}
+  .card h2{margin:0 0 14px;font-size:12px;letter-spacing:.14em;color:var(--muted);text-transform:uppercase}
+  label{display:block;font-size:13px;color:var(--muted);margin:0 0 6px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:780px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  select,input[type=text],input[type=password],textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--txt);border-radius:10px;padding:11px 12px;font:inherit;outline:none}
+  input[type=color]{width:100%;height:42px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:4px;cursor:pointer}
+  select:focus,textarea:focus,input:focus{border-color:var(--accent)}
+  textarea{min-height:90px;resize:vertical}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  button{cursor:pointer;border:none;border-radius:10px;font:inherit;font-weight:800;padding:12px 18px;color:#0a0d14;background:linear-gradient(135deg,var(--accent2),#ffb43b);transition:.15s}
+  button:hover{filter:brightness(1.06)}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  button.primary{color:#fff;background:linear-gradient(135deg,var(--accent),#ff7b3b)}
+  button.ghost{background:transparent;border:1px solid var(--border);color:var(--txt)}
+  button.sm{padding:8px 13px;font-size:13px;font-weight:700}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;align-items:center}
+  .stat{font-size:12px;color:var(--muted);min-height:18px}
+  .keystatus{font-size:12px;padding:4px 10px;border-radius:999px;border:1px solid var(--border)}
+  .keystatus.ok{color:var(--ok);border-color:rgba(55,211,155,.4)}
+  .keystatus.no{color:var(--warn,#ffb454);border-color:rgba(255,180,84,.4)}
+  #cv{width:100%;aspect-ratio:16/9;background:#000;border-radius:12px;display:block;border:1px solid var(--border)}
+  .swatches{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+  .sw{width:34px;height:34px;border-radius:8px;border:1px solid rgba(255,255,255,.15)}
+  .brief{font-size:13px;color:var(--muted)}
+  .brief b{color:var(--txt)}
+  .pill{display:inline-block;font-size:11px;padding:3px 9px;border-radius:999px;background:rgba(255,59,107,.16);color:#ff8aa6;margin-left:6px}
+  .row{display:flex;gap:10px;align-items:center}
+  .conceptRow{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+  .concept{border:1px solid var(--border);border-radius:10px;overflow:hidden;cursor:pointer;background:var(--panel2)}
+  .concept img{width:100%;aspect-ratio:16/9;object-fit:cover;display:block}
+  .concept.sel{border-color:var(--accent);box-shadow:0 0 0 2px rgba(255,59,107,.4)}
+  .concept .cl{padding:6px 8px;font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">&#9889;</div>
+    <div>
+      <h1>Thumbnail Studio</h1>
+      <p>Bagi titlul &middot; AI face un thumbnail profesional (CTR) &middot; primesti si promptul folosit</p>
+    </div>
+    <div style="margin-left:auto"><span id="keyStatus" class="keystatus no">Verific cheia...</span></div>
+  </header>
+
+  <!-- 1. INPUT -->
+  <div class="card">
+    <h2>1 &middot; Titlu &amp; stil</h2>
+    <label>Titlul videoclipului</label>
+    <input id="title" type="text" placeholder="ex: Cazul nerezolvat care a speriat o tara intreaga" />
+    <div class="grid g3" style="margin-top:14px">
+      <div>
+        <label>Nisa / categorie</label>
+        <select id="niche">
+          <option value="auto">Auto (din titlu)</option>
+          <option value="crime">Crime / True Crime</option>
+          <option value="mystery">Mister / Nerezolvat</option>
+          <option value="history">Istorie</option>
+          <option value="space">Spatiu / Stiinta</option>
+          <option value="finance">Finante / Afaceri</option>
+          <option value="tech">Tech / AI</option>
+          <option value="gaming">Gaming</option>
+          <option value="fitness">Fitness / Sport</option>
+          <option value="education">Educatie / Explainer</option>
+          <option value="lifestyle">Lifestyle / Vlog</option>
+          <option value="horror">Horror</option>
+        </select>
+      </div>
+      <div>
+        <label>Stil vizual</label>
+        <select id="style">
+          <option value="auto">Auto (recomandat AI)</option>
+          <option value="bold_face">Bold / Reactie (MrBeast)</option>
+          <option value="cinematic">Cinematic / Film</option>
+          <option value="documentary">Documentar / Realist</option>
+          <option value="dark_moody">Dark &amp; moody</option>
+          <option value="clean_tech">Clean / Tech modern</option>
+          <option value="vibrant_pop">Vibrant / Pop colorat</option>
+          <option value="luxury">Luxury / Premium</option>
+        </select>
+      </div>
+      <div>
+        <label>Format</label>
+        <select id="ratio">
+          <option value="16:9">16:9 (YouTube)</option>
+          <option value="1:1">1:1 (post)</option>
+          <option value="9:16">9:16 (Shorts/Reels)</option>
+        </select>
+      </div>
+    </div>
+    <div class="toolbar">
+      <button id="go" class="primary">&#10024; Genereaza thumbnail</button>
+      <button id="concepts" class="ghost sm">3 concepte</button>
+      <span id="goStat" class="stat"></span>
+    </div>
+    <div class="hint">AI deduce subiectul, emotia, paleta (regula 60-30-10), textul scurt si compozitia, apoi genereaza fundalul si compune thumbnail-ul.</div>
+  </div>
+
+  <!-- 2. PREVIEW -->
+  <div class="card">
+    <h2>2 &middot; Thumbnail</h2>
+    <canvas id="cv" width="1280" height="720"></canvas>
+    <div id="conceptRow" class="conceptRow" style="display:none"></div>
+    <div class="toolbar">
+      <button id="regenBg" class="ghost sm">&#8635; Regenereaza fundalul</button>
+      <button id="reText" class="ghost sm">&#10024; Re-sugereaza textul</button>
+      <button id="redraw" class="ghost sm">Redeseneaza textul</button>
+      <button id="dl" class="ghost sm">&#11015; Descarca PNG</button>
+      <span id="dlStat" class="stat"></span>
+    </div>
+  </div>
+
+  <!-- 3. EDIT -->
+  <div class="card">
+    <h2>3 &middot; Editare text &amp; culori</h2>
+    <div class="grid g2">
+      <div>
+        <label>Text pe thumbnail (scurt, 2-5 cuvinte)</label>
+        <input id="ovText" type="text" placeholder="ex: ADEVARUL ASCUNS" />
+        <label style="margin-top:12px">Cuvantul accentuat (colorat)</label>
+        <input id="ovAccentWord" type="text" placeholder="ex: ADEVARUL" />
+      </div>
+      <div class="grid g2">
+        <div>
+          <label>Pozitie text</label>
+          <select id="layout">
+            <option value="auto">Auto</option>
+            <option value="left">Stanga</option>
+            <option value="right">Dreapta</option>
+            <option value="center">Centru</option>
+            <option value="bottom">Jos (banda)</option>
+          </select>
+        </div>
+        <div>
+          <label>Font</label>
+          <select id="font">
+            <option value="Anton">Anton (impact)</option>
+            <option value="Archivo Black">Archivo Black</option>
+            <option value="Montserrat">Montserrat 900</option>
+          </select>
+        </div>
+        <div>
+          <label>Culoare text</label>
+          <input id="cText" type="color" value="#ffffff" />
+        </div>
+        <div>
+          <label>Culoare accent</label>
+          <input id="cAccent" type="color" value="#ffd23b" />
+        </div>
+        <div>
+          <label>Marime text</label>
+          <input id="size" type="range" min="60" max="170" step="2" value="118" style="width:100%" />
+        </div>
+        <div>
+          <label>Contrast imagine</label>
+          <input id="imgContrast" type="range" min="100" max="170" step="2" value="118" style="width:100%" />
+        </div>
+      </div>
+    </div>
+    <div class="swatches" id="swatches"></div>
+    <div class="brief" id="brief" style="margin-top:10px"></div>
+  </div>
+
+  <!-- 4. PROMPT -->
+  <div class="card">
+    <h2>4 &middot; Promptul thumbnail-ului <span class="pill">copiabil</span></h2>
+    <textarea id="prompt" style="min-height:120px" placeholder="Promptul complet (EN) apare aici dupa generare..."></textarea>
+    <div class="toolbar">
+      <button id="copyPrompt" class="ghost sm">&#128203; Copiaza promptul</button>
+      <button id="regenFromPrompt" class="ghost sm">&#8635; Genereaza din acest prompt</button>
+      <span id="promptStat" class="stat"></span>
+    </div>
+    <div class="hint">Poti edita promptul si apoi apesi "Genereaza din acest prompt" ca sa refaci fundalul exact cum vrei.</div>
+  </div>
+
+  <!-- SETUP -->
+  <div class="card">
+    <h2>5 &middot; Setup (optional)</h2>
+    <div class="grid g2">
+      <div>
+        <label>Model imagini</label>
+        <select id="imgModel">
+          <option value="gemini-2.5-flash-image">Gemini 2.5 Flash Image (Nano Banana)</option>
+          <option value="imagen-4.0-generate-001">Imagen 4</option>
+        </select>
+      </div>
+      <div>
+        <label>Cheie API Gemini (doar daca mediul nu o ofera)</label>
+        <input id="apiKey" type="password" placeholder="Lipeste cheia de la aistudio.google.com/apikey" />
+        <div class="hint">In Gemini Canvas / AI Studio merge de obicei fara cheie.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<script>
+"use strict";
+/* ============================================================
+   Thumbnail Studio - generator AI de thumbnail-uri (single file)
+   Principii din research: contrast mare (yellow/black, red/yellow,
+   blue/orange), regula 60-30-10, subiect focal cu o emotie dominanta,
+   text scurt bold (2-5 cuvinte) lizibil pe mobil, spatiu gol pentru text,
+   textul il deseneaza aplicatia (nu modelul de imagini).
+   ============================================================ */
+const $=id=>document.getElementById(id);
+
+/* paletă high-contrast pe nișă (dominant bg, secundar, accent text) */
+const NICHE_PRESET={
+  crime:{mood:'dark, tense, neo-noir', palette:['#0b0f1a','#9b1c2e','#ffd23b'], emotion:'tension', lighting:'hard low-key chiaroscuro lighting, deep shadows'},
+  mystery:{mood:'eerie, mysterious, foggy', palette:['#0a1420','#1f6f8b','#ffd23b'], emotion:'curiosity', lighting:'cold volumetric light, fog'},
+  history:{mood:'epic, cinematic, painterly', palette:['#1a120b','#8a5a2b','#ffcf66'], emotion:'awe', lighting:'dramatic golden-hour rim light'},
+  space:{mood:'cosmic, awe, scientific', palette:['#05070f','#2b4cff','#23e0ff'], emotion:'awe', lighting:'dramatic rim lighting, glow'},
+  finance:{mood:'premium, confident, corporate', palette:['#07120f','#0f6f4c','#ffd23b'], emotion:'authority', lighting:'clean studio lighting'},
+  tech:{mood:'modern, sleek, high-tech', palette:['#070b14','#1463ff','#23e0ff'], emotion:'curiosity', lighting:'cool neon edge lighting'},
+  gaming:{mood:'energetic, vibrant, intense', palette:['#0a0716','#7a1fff','#23ff9e'], emotion:'excitement', lighting:'punchy neon lighting'},
+  fitness:{mood:'powerful, energetic', palette:['#0b0d12','#ff5d2e','#ffe23b'], emotion:'determination', lighting:'high contrast gym lighting'},
+  education:{mood:'clean, clear, friendly', palette:['#0c1320','#2b6fff','#ffd23b'], emotion:'curiosity', lighting:'soft clean studio lighting'},
+  lifestyle:{mood:'warm, bright, aspirational', palette:['#120e0a','#e08a3b','#ffe06b'], emotion:'joy', lighting:'warm natural light'},
+  horror:{mood:'terrifying, dread', palette:['#070707','#5a0f12','#d7d7d7'], emotion:'fear', lighting:'harsh flashlight, deep darkness'},
+};
+const STYLE_HINT={
+  auto:'', 
+  bold_face:'extreme close-up of a person with an exaggerated emotional facial expression, bright punchy colors, high saturation, MrBeast-style',
+  cinematic:'cinematic film still, anamorphic, shallow depth of field, dramatic color grade, photorealistic, ultra detailed',
+  documentary:'realistic documentary photograph, natural lighting, authentic, photorealistic, highly detailed',
+  dark_moody:'dark moody atmosphere, low-key lighting, heavy shadows, cinematic, high contrast',
+  clean_tech:'clean modern tech aesthetic, minimal background, soft studio gradient, crisp, professional',
+  vibrant_pop:'vibrant saturated pop colors, bold graphic look, high energy, eye-catching',
+  luxury:'luxury premium aesthetic, rich tones, elegant dramatic lighting, high-end, cinematic',
+};
+const EMOJI_FONTS_READY=document.fonts?document.fonts.ready:Promise.resolve();
+
+/* ---------- API (keyless friendly: Canvas/AI Studio inject the key) ---------- */
+const BASE='https://generativelanguage.googleapis.com/v1beta/models/';
+function lsGet(k){ try{ return (typeof localStorage!=='undefined')?localStorage.getItem(k):null; }catch(e){ return null; } }
+function lsSet(k,v){ try{ if(typeof localStorage!=='undefined') localStorage.setItem(k,v); }catch(e){} }
+function envKey(){ try{ return (typeof process!=='undefined'&&process.env&&(process.env.API_KEY||process.env.GEMINI_API_KEY))||''; }catch(e){ return ''; } }
+function getKey(){ const el=$('apiKey'); return (el&&el.value.trim())||(typeof window!=='undefined'&&window.GEMINI_API_KEY)||envKey()||lsGet('ts_key')||''; }
+function refreshKey(){ const ok=!!getKey(); const el=$('keyStatus'); el.textContent=ok?'Cheie OK':'Fara cheie (merge in Canvas)'; el.className='keystatus '+(ok?'ok':'no'); }
+(function(){ const s=lsGet('ts_key'); if(s&&$('apiKey'))$('apiKey').value=s; if($('apiKey'))$('apiKey').addEventListener('input',()=>{lsSet('ts_key',$('apiKey').value.trim());refreshKey();}); })();
+
+async function geminiText(prompt){
+  const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+getKey(),{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+  });
+  const raw=await r.text(); let j; try{ j=JSON.parse(raw); }catch(e){ throw new Error('raspuns invalid'); }
+  if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare text API');
+  return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
+}
+function aspectFor(){ const r=$('ratio').value; return r==='1:1'?'1:1':r==='9:16'?'9:16':'16:9'; }
+async function geminiImage(prompt){
+  const model=$('imgModel').value, key=getKey();
+  if(model.indexOf('imagen')===0){
+    const r=await fetch(BASE+model+':predict?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({instances:[{prompt:prompt}],parameters:{sampleCount:1,aspectRatio:aspectFor()}})});
+    const j=await r.json(); if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare Imagen');
+    return 'data:image/png;base64,'+j.predictions[0].bytesBase64Encoded;
+  }
+  const r=await fetch(BASE+model+':generateContent?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({contents:[{parts:[{text:prompt+' . '+aspectFor()+' aspect ratio.'}]}]})});
+  const j=await r.json(); if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare imagine');
+  const part=((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).find(p=>p.inlineData);
+  if(!part) throw new Error('Modelul nu a returnat imagine.');
+  return 'data:'+(part.inlineData.mimeType||'image/png')+';base64,'+part.inlineData.data;
+}
+
+/* ---------- toast (alert e blocat in Canvas) ---------- */
+function toast(msg,err){ let t=$('lfsToast'); if(!t){ t=document.createElement('div'); t.id='lfsToast'; t.style.cssText='position:fixed;left:50%;top:16px;transform:translateX(-50%);z-index:9999;max-width:90%;padding:12px 18px;border-radius:10px;font:700 14px Montserrat,Arial;color:#fff;box-shadow:0 8px 30px rgba(0,0,0,.45);transition:opacity .3s;opacity:0;pointer-events:none'; document.body.appendChild(t);} t.style.background=err?'#3a1620':'#15203a'; t.style.border='1px solid '+(err?'#ff5d6c':'#ff3b6b'); t.textContent=msg; t.style.opacity='1'; clearTimeout(t._h); t._h=setTimeout(()=>t.style.opacity='0',4200); }
+
+
+/* ---------- STATE ---------- */
+const state={ brief:null, bgImg:null, bgUrl:null, concepts:[] };
+
+/* detect niche from title if 'auto' (quick heuristic, AI refines anyway) */
+function effectiveNiche(){ return $('niche').value; }
+
+/* ---------- AI BRIEF: titlu -> plan thumbnail ---------- */
+async function makeBrief(){
+  const title=$('title').value.trim(); if(!title) throw new Error('Scrie un titlu.');
+  const niche=$('niche').value, style=$('style').value;
+  const styleHint=STYLE_HINT[style]||'';
+  const prompt='You are a world-class YouTube thumbnail art director optimizing for click-through rate (CTR). '
+    +'Given a video TITLE, design ONE high-CTR thumbnail concept. Apply: strong single focal subject, ONE dominant emotion '
+    +'(curiosity, shock, excitement, awe, fear, authority), very high contrast color pairing (e.g. yellow/black, red/yellow, blue/orange), '
+    +'the 60-30-10 color rule, rule of thirds, and clear NEGATIVE SPACE on one side reserved for big bold text. '
+    +'The image itself must contain NO text. Keep overlay text to 2-5 punchy words (can differ from the title, uppercase).\n'
+    +'TITLE: "'+title+'"\n'
+    +'NICHE: '+niche+' . STYLE PREFERENCE: '+(style==='auto'?'choose best':style)+' .\n'
+    +'Return STRICT JSON only, no markdown:\n'
+    +'{"niche":"one of crime|mystery|history|space|finance|tech|gaming|fitness|education|lifestyle|horror",'
+    +'"emotion":"...","subject":"concrete focal subject + setting, vivid and specific",'
+    +'"overlayText":"2-5 WORDS UPPERCASE","accentWord":"the single most important word from overlayText",'
+    +'"textSide":"left|right|center|bottom (opposite the subject, where negative space is)",'
+    +'"palette":{"dominant":"#hex background","secondary":"#hex subject/midtone","accent":"#hex text accent (high contrast)"},'
+    +'"imagePrompt":"a vivid, cinematic, photorealistic ENGLISH image-generation prompt: subject, setting, the dominant emotion on the subject\'s face if a person, composition with empty space on the chosen text side, lighting, color palette, camera/lens, ultra-detailed, high contrast. Explicitly: no text, no letters, no watermark, no logo."}';
+  let out=await geminiText(prompt); out=out.replace(/```json/gi,'').replace(/```/g,'').trim();
+  const m=out.match(/\{[\s\S]*\}/); if(!m) throw new Error('Raspuns invalid de la AI.');
+  const d=JSON.parse(m[0]);
+  /* fallback-uri sigure */
+  const pre=NICHE_PRESET[d.niche]||NICHE_PRESET[niche]||NICHE_PRESET.mystery;
+  d.palette=d.palette||{}; 
+  d.palette.dominant=d.palette.dominant||pre.palette[0];
+  d.palette.secondary=d.palette.secondary||pre.palette[1];
+  d.palette.accent=d.palette.accent||pre.palette[2];
+  d.emotion=d.emotion||pre.emotion;
+  d.overlayText=(d.overlayText||title).toUpperCase().slice(0,40);
+  d.accentWord=(d.accentWord||d.overlayText.split(' ')[0]).toUpperCase();
+  d.textSide=['left','right','center','bottom'].includes(d.textSide)?d.textSide:'left';
+  d.subject=d.subject||title;
+  if(!d.imagePrompt) d.imagePrompt=buildImagePrompt(d);
+  return d;
+}
+
+/* construieste promptul de imagine din brief + stil (folosit si la fallback / regenerare) */
+function buildImagePrompt(d){
+  const style=$('style').value; const styleHint=STYLE_HINT[style]||'';
+  const pre=NICHE_PRESET[d.niche]||NICHE_PRESET.mystery;
+  const side=d.textSide==='left'?'right side of the frame, leaving the LEFT third as clean negative space':
+             d.textSide==='right'?'left side of the frame, leaving the RIGHT third as clean negative space':
+             d.textSide==='bottom'?'upper part of the frame, leaving the BOTTOM third darker and clean':
+             'one side of the frame, leaving generous negative space for text';
+  return d.subject+'. Dominant emotion: '+d.emotion+'. Subject placed on the '+side+'. '
+    +(styleHint?styleHint+'. ':'')+pre.mood+', '+pre.lighting+'. '
+    +'High contrast color palette ('+d.palette.dominant+' background, '+d.palette.secondary+' midtones, '+d.palette.accent+' highlights), '
+    +'rule of thirds, strong focal point, cinematic depth, ultra detailed, sharp, professional YouTube thumbnail background. '
+    +'Absolutely NO text, no letters, no words, no watermark, no logo, no captions.';
+}
+
+/* ---------- helper culori ---------- */
+function hexToRgb(h){ h=(h||'').replace('#',''); if(h.length===3)h=h.split('').map(c=>c+c).join(''); const n=parseInt(h||'000000',16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255}; }
+function luminance(h){ const {r,g,b}=hexToRgb(h); const a=[r,g,b].map(v=>{v/=255; return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);}); return 0.2126*a[0]+0.7152*a[1]+0.0722*a[2]; }
+function contrastRatio(a,b){ const l1=luminance(a),l2=luminance(b); const hi=Math.max(l1,l2),lo=Math.min(l1,l2); return (hi+0.05)/(lo+0.05); }
+
+
+/* ---------- CANVAS COMPOSITING ---------- */
+const cv=$('cv'), ctx=cv.getContext('2d');
+function setCanvasSize(){
+  const r=$('ratio').value;
+  if(r==='1:1'){ cv.width=1080; cv.height=1080; }
+  else if(r==='9:16'){ cv.width=1080; cv.height=1920; }
+  else { cv.width=1280; cv.height=720; }
+}
+function drawCover(im){
+  const W=cv.width,H=cv.height; const ir=im.width/im.height, cr=W/H; let dw,dh;
+  if(ir>cr){ dh=H; dw=dh*ir; } else { dw=W; dh=dw/ir; }
+  ctx.drawImage(im,(W-dw)/2,(H-dh)/2,dw,dh);
+}
+function wrapWords(words,maxChars){ const lines=[]; let line=''; words.forEach(w=>{ if((line+' '+w).trim().length>maxChars){ if(line)lines.push(line.trim()); line=w; } else line+=' '+w; }); if(line.trim())lines.push(line.trim()); return lines; }
+
+function render(){
+  const W=cv.width,H=cv.height;
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#0a0d14'; ctx.fillRect(0,0,W,H);
+  /* fundal */
+  if(state.bgImg&&state.bgImg.complete){ ctx.save(); ctx.filter='contrast('+($('imgContrast').value/100)+') saturate(1.08)'; drawCover(state.bgImg); ctx.restore(); }
+  else { const g=ctx.createLinearGradient(0,0,W,H); g.addColorStop(0,'#11151f'); g.addColorStop(1,'#0a0d14'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); ctx.fillStyle='#3a465c'; ctx.font='bold 40px Montserrat,Arial'; ctx.textAlign='center'; ctx.fillText('Apasa "Genereaza thumbnail"',W/2,H/2); }
+  const txt=($('ovText').value||'').toUpperCase().trim(); if(!txt) return;
+
+  const layout=$('layout').value==='auto'?((state.brief&&state.brief.textSide)||'left'):$('layout').value;
+  /* scrim directional pentru lizibilitate (research: contrast text >=4.5:1) */
+  ctx.save();
+  if(layout==='left'){ const g=ctx.createLinearGradient(0,0,W*0.75,0); g.addColorStop(0,'rgba(0,0,0,.78)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+  else if(layout==='right'){ const g=ctx.createLinearGradient(W,0,W*0.25,0); g.addColorStop(0,'rgba(0,0,0,.78)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+  else if(layout==='bottom'){ const g=ctx.createLinearGradient(0,H,0,H*0.4); g.addColorStop(0,'rgba(0,0,0,.82)'); g.addColorStop(1,'rgba(0,0,0,0)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+  else { const g=ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,W*0.7); g.addColorStop(0,'rgba(0,0,0,.55)'); g.addColorStop(1,'rgba(0,0,0,.15)'); ctx.fillStyle=g; ctx.fillRect(0,0,W,H); }
+  ctx.restore();
+  /* vigneta */
+  const vg=ctx.createRadialGradient(W/2,H/2,H*0.45,W/2,H/2,W*0.85); vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,.5)'); ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+
+  /* TEXT */
+  const fontFam=$('font').value, col=$('cText').value, acc=$('cAccent').value;
+  const accentWord=($('ovAccentWord').value||'').toUpperCase().trim();
+  let baseSize=parseInt($('size').value,10) * (W/1280);
+  const maxChars = layout==='center'?14:(layout==='bottom'?22:13);
+  let lines=wrapWords(txt.split(/\s+/),maxChars);
+  /* micsoreaza daca prea multe linii */
+  if(lines.length>4){ baseSize*=0.8; lines=wrapWords(txt.split(/\s+/),maxChars+4); }
+  const lh=baseSize*1.02;
+  let x, align;
+  const margin=W*0.05;
+  if(layout==='left'){ x=margin; align='left'; }
+  else if(layout==='right'){ x=W-margin; align='right'; }
+  else if(layout==='center'){ x=W/2; align='center'; }
+  else { x=margin; align='left'; }
+  let blockH=lines.length*lh;
+  let y = layout==='bottom' ? H-margin-blockH+lh*0.8 : H/2-blockH/2+lh*0.78;
+  ctx.textAlign=align; ctx.textBaseline='alphabetic';
+  lines.forEach(ln=>{
+    ctx.font='900 '+baseSize+'px '+fontFam+', Arial Black, sans-serif';
+    /* contur gros pentru lizibilitate maxima */
+    ctx.lineJoin='round'; ctx.miterLimit=2; ctx.lineWidth=baseSize*0.18; ctx.strokeStyle='#000';
+    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=baseSize*0.18; ctx.shadowOffsetY=baseSize*0.05;
+    /* desenam cuvant cu cuvant ca sa coloram accentul */
+    const words=ln.split(' ');
+    const widths=words.map(w=>{ return ctx.measureText(w+' ').width; });
+    const totalW=ctx.measureText(ln).width;
+    let cx = align==='left'?x : align==='right'?x-totalW : x-totalW/2;
+    words.forEach((w,wi)=>{
+      const ww=widths[wi];
+      const isAcc = accentWord && w.replace(/[^A-Z0-9ĂÂÎȘȚ]/gi,'')===accentWord.replace(/[^A-Z0-9ĂÂÎȘȚ]/gi,'');
+      ctx.strokeText(w, cx, y);
+      ctx.shadowColor='transparent';
+      ctx.fillStyle = isAcc?acc:col;
+      ctx.fillText(w, cx, y);
+      ctx.shadowColor='rgba(0,0,0,.6)';
+      cx+=ww;
+    });
+    y+=lh;
+  });
+  ctx.shadowColor='transparent';
+}
+
+
+/* ---------- aplica brief in UI ---------- */
+function applyBriefToUI(d){
+  $('ovText').value=d.overlayText||'';
+  $('ovAccentWord').value=d.accentWord||'';
+  $('layout').value='auto';
+  if(d.palette){ $('cAccent').value=normHex(d.palette.accent)||'#ffd23b'; }
+  $('cText').value='#ffffff';
+  $('prompt').value=d.imagePrompt||buildImagePrompt(d);
+  renderSwatches(d); renderBriefInfo(d);
+}
+function normHex(h){ if(!h)return null; h=h.trim(); if(/^#?[0-9a-fA-F]{6}$/.test(h)) return h[0]==='#'?h:'#'+h; if(/^#?[0-9a-fA-F]{3}$/.test(h)){ h=h.replace('#',''); return '#'+h.split('').map(c=>c+c).join(''); } return null; }
+function renderSwatches(d){ const wrap=$('swatches'); wrap.innerHTML=''; if(!d.palette)return; [['Dominant',d.palette.dominant],['Secundar',d.palette.secondary],['Accent',d.palette.accent]].forEach(([n,c])=>{ const sw=document.createElement('div'); sw.className='sw'; sw.style.background=normHex(c)||'#000'; sw.title=n+': '+c; wrap.appendChild(sw); }); }
+function renderBriefInfo(d){ const cr=contrastRatio(d.palette.accent,d.palette.dominant).toFixed(1); $('brief').innerHTML='Emotie: <b>'+esc(d.emotion)+'</b> &middot; Nisa: <b>'+esc(d.niche)+'</b> &middot; Pozitie text: <b>'+esc(d.textSide)+'</b> &middot; Contrast accent/fundal: <b>'+cr+':1</b> '+(cr>=4.5?'(bun)':'(slab - ajusteaza culorile)'); }
+function esc(s){ return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function loadImg(src){ return new Promise((res,rej)=>{ const im=new Image(); im.onload=()=>res(im); im.onerror=()=>rej(new Error('imagine invalida')); im.src=src; }); }
+async function genBackgroundFromPrompt(p){
+  const url=await geminiImage(p);
+  state.bgUrl=url; state.bgImg=await loadImg(url); render();
+}
+
+/* ---------- GENERARE COMPLETA ---------- */
+$('go').onclick=async()=>{
+  if(!$('title').value.trim()){ toast('Scrie un titlu intai.',true); return; }
+  $('go').disabled=true; $('goStat').textContent='AI proiecteaza thumbnail-ul...';
+  $('conceptRow').style.display='none';
+  try{
+    setCanvasSize();
+    const d=await makeBrief(); state.brief=d; applyBriefToUI(d);
+    $('goStat').textContent='Generez fundalul...';
+    await genBackgroundFromPrompt(d.imagePrompt);
+    $('goStat').textContent='Gata. Editeaza textul/culorile daca vrei.';
+    toast('Thumbnail generat. Vezi sectiunea 2.');
+  }catch(e){ $('goStat').textContent='Eroare: '+e.message; toast('Eroare: '+e.message,true); }
+  finally{ $('go').disabled=false; }
+};
+
+/* ---------- 3 CONCEPTE ---------- */
+$('concepts').onclick=async()=>{
+  if(!$('title').value.trim()){ toast('Scrie un titlu intai.',true); return; }
+  $('concepts').disabled=true; $('go').disabled=true; $('goStat').textContent='Generez 3 concepte...';
+  const row=$('conceptRow'); row.innerHTML=''; row.style.display='grid'; state.concepts=[];
+  try{
+    setCanvasSize();
+    for(let i=0;i<3;i++){
+      $('goStat').textContent='Concept '+(i+1)+'/3...';
+      const d=await makeBrief();
+      const url=await geminiImage(d.imagePrompt);
+      const c={brief:d,url:url}; state.concepts.push(c);
+      const el=document.createElement('div'); el.className='concept'; el.innerHTML='<img src="'+url+'"><div class="cl">'+esc(d.overlayText)+'</div>';
+      el.onclick=async()=>{ document.querySelectorAll('.concept').forEach(x=>x.classList.remove('sel')); el.classList.add('sel'); state.brief=d; applyBriefToUI(d); state.bgUrl=url; state.bgImg=await loadImg(url); render(); toast('Concept selectat.'); };
+      row.appendChild(el);
+    }
+    $('goStat').textContent='3 concepte gata. Apasa pe unul ca sa-l folosesti.';
+  }catch(e){ $('goStat').textContent='Eroare: '+e.message; toast('Eroare: '+e.message,true); }
+  finally{ $('concepts').disabled=false; $('go').disabled=false; }
+};
+
+/* ---------- REGENERARE / RE-TEXT ---------- */
+$('regenBg').onclick=async()=>{ const p=$('prompt').value.trim(); if(!p){ toast('Genereaza intai.',true); return; } $('dlStat').textContent='Regenerez fundalul...'; try{ await genBackgroundFromPrompt(p); $('dlStat').textContent='Fundal nou.'; }catch(e){ $('dlStat').textContent='Eroare: '+e.message; toast('Eroare: '+e.message,true); } };
+$('regenFromPrompt').onclick=$('regenBg').onclick;
+$('reText').onclick=async()=>{
+  if(!$('title').value.trim()){ toast('Scrie un titlu intai.',true); return; }
+  $('promptStat').textContent='Re-sugerez textul...';
+  try{ const d=await makeBrief(); state.brief=d; $('ovText').value=d.overlayText; $('ovAccentWord').value=d.accentWord; $('layout').value='auto'; $('cAccent').value=normHex(d.palette.accent)||$('cAccent').value; renderSwatches(d); renderBriefInfo(d); render(); $('promptStat').textContent='Text actualizat.'; }
+  catch(e){ $('promptStat').textContent='Eroare: '+e.message; toast('Eroare: '+e.message,true); }
+};
+$('redraw').onclick=render;
+
+/* ---------- COPY / DOWNLOAD ---------- */
+$('copyPrompt').onclick=async()=>{ const t=$('prompt').value; if(!t){ $('promptStat').textContent='Genereaza intai.'; return; } try{ await navigator.clipboard.writeText(t); $('promptStat').textContent='Prompt copiat.'; toast('Prompt copiat.'); }catch(e){ $('prompt').select(); $('promptStat').textContent='Selecteaza + Ctrl/Cmd+C.'; } };
+$('dl').onclick=()=>{
+  render();
+  try{
+    cv.toBlob(b=>{
+      if(!b){ $('dlStat').textContent='Export esuat.'; return; }
+      const url=URL.createObjectURL(b), name='thumbnail-'+Date.now()+'.png';
+      const a=document.createElement('a'); a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+      /* in Canvas descarcarea automata poate fi blocata -> link manual vizibil */
+      $('dlStat').innerHTML='PNG gata. ';
+      const link=document.createElement('a'); link.href=url; link.download=name; link.target='_blank';
+      link.textContent='Descarca manual'; link.style.cssText='color:#ffd23b;font-weight:700';
+      $('dlStat').appendChild(link);
+      toast('Thumbnail PNG generat.');
+    },'image/png');
+  }catch(e){ $('dlStat').textContent='Export blocat: '+e.message; toast('Export blocat: '+e.message,true); }
+};
+
+/* ---------- LIVE EDIT ---------- */
+['ovText','ovAccentWord','layout','font','cText','cAccent','size','imgContrast'].forEach(id=>{ const el=$(id); if(el) el.addEventListener('input',render); });
+$('ratio').addEventListener('change',()=>{ setCanvasSize(); render(); });
+$('niche').addEventListener('change',()=>{}); $('style').addEventListener('change',()=>{});
+
+/* ---------- INIT ---------- */
+refreshKey(); setCanvasSize(); render();
+(function preloadFonts(){
+  if(!document.fonts||!document.fonts.load){ return; }
+  Promise.all([
+    document.fonts.load('80px "Anton"'),
+    document.fonts.load('80px "Archivo Black"'),
+    document.fonts.load('900 80px Montserrat')
+  ]).then(()=>render()).catch(()=>{});
+  document.fonts.ready.then(()=>render());
+})();
+</script>
+</body>
+</html>

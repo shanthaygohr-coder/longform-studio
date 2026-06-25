@@ -739,9 +739,25 @@ async function geminiTranscribeSegments(targetSec){
 async function transcribeAndSegment(){
   if(!audioBlob){ toast('Incarca intai voiceover-ul in campul "Audio naratiune" (sectiunea 2).',true); $('audioInfo').textContent='Nu am gasit voiceover incarcat. Foloseste campul "Audio naratiune" si selecteaza fisierul tau, apoi apasa din nou.'; return; }
   $('segmentVO').disabled=true;
+  /* Voiceover lung/mare: transcrierea audio inline nu e posibila in Canvas. Mergem direct pe script,
+     sincronizat EXACT pe durata vocii (scenele insumate = lungimea voiceover-ului). */
+  const tooBig = (audioDur>600) || (audioBlob.size>14*1024*1024);
+  if(tooBig){
+    if($('script').value.trim()){
+      segmentFromScript();
+      const d=audioDur?(Math.round(audioDur/60)+' min'):'lungime necunoscuta';
+      $('genStat').textContent=scenes.length+' scene din script, sincronizate pe durata voiceover-ului ('+d+'). Ruleaza AI Director, apoi genereaza imaginile.';
+      $('audioInfo').textContent='Voiceover lung ('+d+'): am segmentat din script, sincronizat pe durata vocii. (Transcrierea inline nu merge in Canvas pentru clipuri lungi.)';
+      toast(scenes.length+' scene, sincronizate pe durata voiceover-ului.');
+    }else{
+      $('audioInfo').textContent='Voiceover lung: lipeste scriptul in sectiunea 2, apoi apasa din nou (se va sincroniza pe durata vocii).';
+      toast('Voiceover prea lung pentru transcriere in Canvas. Lipeste scriptul si apasa din nou.',true);
+    }
+    $('segmentVO').disabled=false; return;
+  }
   toast('Transcriu voiceover-ul si segmentez pe el...');
   $('ttsStat').textContent='Transcriere in curs...';
-  $('audioInfo').textContent='Transcriere in curs (poate dura putin pentru voiceover lung)...';
+  $('audioInfo').textContent='Transcriere in curs (poate dura putin)...';
   try{
     const targetSec=parseFloat($('sps').value)||STYLES[styleSel.value].sec||6;
     const segs=await geminiTranscribeSegments(targetSec);

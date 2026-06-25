@@ -1159,10 +1159,12 @@ function easeOut(x){return 1-Math.pow(1-x,3);}
 function easeBack(x){const c=1.7;return 1+ (c+1)*Math.pow(x-1,3)+c*Math.pow(x-1,2);}
 /* momentul cand intra insetul/efectul = pozitia cuvantului-cheie in textul scenei (sincron pe voiceover) */
 function insetInStart(sc){
-  const txt=sc.text||''; const total=(txt.trim().split(/\s+/).filter(Boolean).length)||1; let frac=0.30;
+  const txt=sc.text||''; const total=(txt.trim().split(/\s+/).filter(Boolean).length)||1; let frac=0.18;
   const cue=sc.cue||sc.emphasisCue;
   if(cue && cue.trim()){ const idx=txt.toLowerCase().indexOf(cue.trim().toLowerCase()); if(idx>=0){ const before=txt.slice(0,idx).trim().split(/\s+/).filter(Boolean).length; frac=before/total; } }
-  let t=frac*sc.dur-0.15; return Math.min(Math.max(0.2,t), Math.max(0.2, sc.dur-1.0));
+  let t=frac*sc.dur-0.35; /* intra putin INAINTE de cuvantul-cheie, ca sa fie sincron pe voce */
+  const maxStart=Math.max(0.12, sc.dur-1.2);
+  return Math.min(Math.max(0.1,t), maxStart);
 }
 function shapeClip(c,shape,bw,bh){
   c.beginPath();
@@ -1175,8 +1177,9 @@ function shapeClip(c,shape,bw,bh){
 function drawInset(idx,sc,local){
   const im=insetCache[idx]; if(!im||!im.complete) return;
   const anim=sc.insetIn||'float_in', outAnim=sc.insetOut||'fade_soft', shape=sc.insetShape||'rounded', pos=sc.insetPos||'tr';
-  const inStart=insetInStart(sc), inDur=+sc.insetInDur||0.5, hold=+sc.insetHold||3, outDur=+sc.insetOutDur||0.5;
-  const outStart=inStart+inDur+hold;
+  const inStart=insetInStart(sc), inDur=Math.min(0.45,+sc.insetInDur||0.45), outDur=Math.min(0.45,+sc.insetOutDur||0.45);
+  /* B-roll-ul RAMANE in scena pana aproape de final (nu dispare devreme), cu in/out simetrice */
+  const outStart=Math.max(inStart+inDur+0.6, sc.dur-outDur-0.08);
   if(local<inStart) return;
   let phase,e;
   if(local<inStart+inDur){ phase='in'; e=easeOut((local-inStart)/inDur); }
@@ -1418,11 +1421,23 @@ function downloadBlob(blob, filename, statusEl){
 /* ---------- EXPORT ---------- */
 let recDest=null;
 function fmtTime(s){const m=Math.floor(s/60),x=Math.round(s%60);return m+'m'+String(x).padStart(2,'0')+'s';}
+/* voiceover decodat o singura data -> redare stabila, fara fade */
+let voiceBuf=null, voiceBufURL=null, voiceSrcGlobal=null;
+async function getVoiceBuffer(){
+  if(!audioURL) return null;
+  if(voiceBuf && voiceBufURL===audioURL) return voiceBuf;
+  try{ const ab=await (await fetch(audioURL)).arrayBuffer(); const c=ensureAudioCtx(); voiceBuf=await c.decodeAudioData(ab.slice(0)); voiceBufURL=audioURL; return voiceBuf; }
+  catch(e){ return null; }
+}
 async function exportRealtime(fps,bitrate){
   const c=ensureAudioCtx();
+  try{ if(c.state==='suspended') await c.resume(); }catch(e){}
   const stream=cv.captureStream(fps);
   recDest=c.createMediaStreamDestination();
-  if(audioEl){ try{ const srcNode=c.createMediaElementSource(audioEl); srcNode.connect(recDest); srcNode.connect(c.destination);}catch(e){} }
+  /* Voiceover redat dintr-un AudioBuffer decodat: volum constant, fara fade/ducking ca la <audio> */
+  const vbuf=await getVoiceBuffer();
+  voiceSrcGlobal=null;
+  if(vbuf){ const vs=c.createBufferSource(); vs.buffer=vbuf; const vg=c.createGain(); vg.gain.setValueAtTime(1.0,c.currentTime); vs.connect(vg); vg.connect(recDest); vg.connect(c.destination); voiceSrcGlobal=vs; }
   recDest.stream.getAudioTracks().forEach(tr=>stream.addTrack(tr));
   const mime=MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus')?'video/webm;codecs=vp9,opus':'video/webm';
   const rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:bitrate});
@@ -1434,7 +1449,7 @@ async function exportRealtime(fps,bitrate){
   };
   rec.start(2000);
   lastScene=-1; insetPlayed.clear(); startT=performance.now();
-  if(audioEl){try{audioEl.currentTime=0;await audioEl.play();}catch(e){}}
+  if(voiceSrcGlobal){ try{ voiceSrcGlobal.start(0); }catch(e){} } else if(audioEl){ try{ audioEl.currentTime=0; await audioEl.play(); }catch(e){} }
   await new Promise(res=>{
     function rl(now){ const t=(now-startT)/1000; if(t>=totalDur){res();return;}
       const idx=drawFrame(t);
@@ -1445,7 +1460,7 @@ async function exportRealtime(fps,bitrate){
       requestAnimationFrame(rl);
     } requestAnimationFrame(rl);
   });
-  rec.stop(); if(audioEl)audioEl.pause();
+  rec.stop(); if(voiceSrcGlobal){ try{ voiceSrcGlobal.stop(); }catch(e){} voiceSrcGlobal=null; } if(audioEl)audioEl.pause();
 }
 let muxerLoadTried=false, muxerLoadOk=false;
 function loadMuxer(){

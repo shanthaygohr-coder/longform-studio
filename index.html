@@ -1745,35 +1745,63 @@ async function renderMixedAudio(){
   return await off.startRendering();
 }
 async function exportTurbo(fps,bitrate){
-  const Muxer=window.WebMMuxer.Muxer, ArrayBufferTarget=window.WebMMuxer.ArrayBufferTarget;
+  const WM=window.WebMMuxer, Muxer=WM.Muxer;
+  /* alegem un target care NU tine tot fisierul in RAM (cauza incetinirii la ~70% pe clipuri lungi):
+     1) salvare directa pe disc (showSaveFilePicker), 2) OPFS (streaming), 3) RAM (ultima varianta) */
+  let target=null, writable=null, fileHandle=null, mode='ram';
+  try{
+    if(window.showSaveFilePicker && WM.FileSystemWritableFileStreamTarget){
+      const h=await window.showSaveFilePicker({suggestedName:'longform-'+Date.now()+'.webm',types:[{description:'WebM video',accept:{'video/webm':['.webm']}}]});
+      writable=await h.createWritable(); target=new WM.FileSystemWritableFileStreamTarget(writable); mode='disk';
+    }
+  }catch(e){ if(e&&e.name==='AbortError') throw new Error('export anulat'); }
+  if(!target){
+    try{ if(navigator.storage&&navigator.storage.getDirectory&&WM.FileSystemWritableFileStreamTarget){
+      const root=await navigator.storage.getDirectory(); fileHandle=await root.getFileHandle('lf-export-'+Date.now()+'.webm',{create:true});
+      writable=await fileHandle.createWritable(); target=new WM.FileSystemWritableFileStreamTarget(writable); mode='opfs';
+    } }catch(e){ target=null; }
+  }
+  if(!target){ target=new WM.ArrayBufferTarget(); mode='ram'; }
+
   let audioBuf=null; if(!!audioURL||$('sfx').checked){ try{ audioBuf=await renderMixedAudio(); }catch(e){ audioBuf=null; } }
-  const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'V_VP9',width:W,height:H,frameRate:fps},
-    audio:audioBuf?{codec:'A_OPUS',numberOfChannels:audioBuf.numberOfChannels,sampleRate:audioBuf.sampleRate}:undefined,firstTimestampBehavior:'offset'});
+  const audioSr=audioBuf?audioBuf.sampleRate:48000, nCh=audioBuf?audioBuf.numberOfChannels:1;
+  const muxer=new Muxer({target:target,video:{codec:'V_VP9',width:W,height:H,frameRate:fps},
+    audio:audioBuf?{codec:'A_OPUS',numberOfChannels:nCh,sampleRate:audioSr}:undefined,firstTimestampBehavior:'offset'});
   let encErr=null;
   const venc=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{ encErr=e; }});
   venc.configure({codec:'vp09.00.10.08',width:W,height:H,bitrate:bitrate,framerate:fps});
-  if(audioBuf){
-    const aenc=new AudioEncoder({output:(c,m)=>muxer.addAudioChunk(c,m),error:e=>{ encErr=e; }});
-    const nCh=audioBuf.numberOfChannels, sr=audioBuf.sampleRate; aenc.configure({codec:'opus',numberOfChannels:nCh,sampleRate:sr,bitrate:128000});
-    const chans=[]; for(let c=0;c<nCh;c++) chans.push(audioBuf.getChannelData(c));
-    const block=4096,total=audioBuf.length;
-    for(let pos=0;pos<total;pos+=block){ const n=Math.min(block,total-pos); const planar=new Float32Array(n*nCh);
-      for(let c=0;c<nCh;c++) planar.set(chans[c].subarray(pos,pos+n),c*n);
-      const ad=new AudioData({format:'f32-planar',sampleRate:sr,numberOfFrames:n,numberOfChannels:nCh,timestamp:Math.round(pos/sr*1e6),data:planar}); aenc.encode(ad); ad.close(); }
-    await aenc.flush();
+  let aenc=null, chans=null; const blockAF=audioSr, totalAF=audioBuf?audioBuf.length:0; let curAF=0;
+  if(audioBuf){ aenc=new AudioEncoder({output:(c,m)=>muxer.addAudioChunk(c,m),error:e=>{ encErr=e; }});
+    aenc.configure({codec:'opus',numberOfChannels:nCh,sampleRate:audioSr,bitrate:128000});
+    chans=[]; for(let c=0;c<nCh;c++) chans.push(audioBuf.getChannelData(c)); }
+  function encodeAudioUntil(t){
+    if(!aenc) return;
+    while(curAF/audioSr <= t && curAF < totalAF){
+      const n=Math.min(blockAF,totalAF-curAF); const planar=new Float32Array(n*nCh);
+      for(let c=0;c<nCh;c++) planar.set(chans[c].subarray(curAF,curAF+n), c*n);
+      const ad=new AudioData({format:'f32-planar',sampleRate:audioSr,numberOfFrames:n,numberOfChannels:nCh,timestamp:Math.round(curAF/audioSr*1e6),data:planar});
+      aenc.encode(ad); ad.close(); curAF+=n;
+    }
   }
   const totalFrames=Math.ceil(totalDur*fps); lastScene=-1;
   for(let i=0;i<totalFrames;i++){
     if(encErr) throw new Error('encoder: '+(encErr.message||encErr));
-    while(venc.encodeQueueSize>2){ await new Promise(r=>setTimeout(r,0)); }
-    drawFrame(i/fps);
+    const t=i/fps;
+    encodeAudioUntil(t); /* INTERCALAM audio cu video -> muxer streameaza, RAM minim */
+    while(venc.encodeQueueSize>4 || (aenc&&aenc.encodeQueueSize>4)){ await new Promise(r=>setTimeout(r,1)); }
+    drawFrame(t);
     const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
     venc.encode(frame,{keyFrame:i%(fps*2)===0}); frame.close();
-    await new Promise(r=>setTimeout(r,0));
-    if(i%fps===0){ $('renderBar').style.width=(i/totalFrames*100)+'%'; $('renderStat').textContent='Turbo \u00b7 frame '+i+'/'+totalFrames+' ('+Math.round(i/totalFrames*100)+'%)'; }
+    if(i%4===0) await new Promise(r=>setTimeout(r,0));
+    if(i%fps===0){ $('renderBar').style.width=(i/totalFrames*100)+'%'; $('renderStat').textContent='Turbo \u00b7 '+Math.round(i/totalFrames*100)+'% (frame '+i+'/'+totalFrames+', '+mode+')'; }
   }
+  encodeAudioUntil(totalDur+9999); /* restul de audio */
+  if(aenc) await aenc.flush();
   if(encErr) throw new Error('encoder: '+(encErr.message||encErr));
   await venc.flush(); muxer.finalize();
+  $('renderBar').style.width='100%';
+  if(mode==='disk'){ await writable.close(); $('renderStat').textContent='Export Turbo gata: salvat direct pe disc.'; toast('Export salvat pe disc.'); return; }
+  if(mode==='opfs'){ await writable.close(); const file=await fileHandle.getFile(); showResultVideo(file); try{ downloadBlob(file,'longform-'+Date.now()+'.webm',null); }catch(e){} $('renderStat').textContent='Export Turbo gata: '+(file.size/1e6).toFixed(1)+' MB. Apasa Play sau Descarca mai jos.'; return; }
   const blob=new Blob([muxer.target.buffer],{type:'video/webm'});
   showResultVideo(blob);
   try{ downloadBlob(blob,'longform-turbo-'+Date.now()+'.webm',null); }catch(e){}

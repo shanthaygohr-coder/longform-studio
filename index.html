@@ -787,16 +787,22 @@ refreshKeyStatus();
 
 /* ---------- GEMINI CALLS ---------- */
 const BASE='https://generativelanguage.googleapis.com/v1beta/models/';
-async function geminiText(prompt){
-  const key=getKey();
-  const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+key,{
-    method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
-  });
-  const raw=await r.text();
-  let j; try{ j=JSON.parse(raw); }catch(e){ throw new Error('raspuns invalid de la model'); }
-  if(!r.ok) throw new Error((j.error&&j.error.message)||'Eroare text API');
-  return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
+async function geminiText(prompt, tries){
+  tries=tries||2; let lastErr='Eroare text API';
+  for(let a=1;a<=tries;a++){
+    try{
+      const r=await fetch(BASE+'gemini-2.5-flash:generateContent?key='+getKey(),{
+        method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({contents:[{parts:[{text:prompt}]}]})
+      });
+      const raw=await r.text();
+      if(!raw||!raw.trim()){ lastErr='raspuns gol de la model (timeout?)'; throw new Error(lastErr); }
+      let j; try{ j=JSON.parse(raw); }catch(e){ lastErr='raspuns invalid de la model'; throw new Error(lastErr); }
+      if(!r.ok){ lastErr=(j.error&&j.error.message)||('HTTP '+r.status); throw new Error(lastErr); }
+      return ((j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts)||[]).map(p=>p.text||'').join('');
+    }catch(e){ lastErr=e.message; if(a<tries) await new Promise(res=>setTimeout(res,1000*a)); }
+  }
+  throw new Error(lastErr);
 }
 async function geminiImage(prompt, refImages){
   const key=getKey();
@@ -1159,54 +1165,63 @@ $('segment').onclick=()=>{
 };
 
 /* ---------- AI DIRECTOR (editor profesionist) ---------- */
+function aiDirectorPromptHead(){
+  return 'Esti editor video + colorist de documentar profesionist. Primesti un script pe scene numerotate. '
+    +'Pentru FIECARE scena decide, ca un editor: durata relativa, EPOCA/contextul dedus din text, subiectul vizual concret, miscarea de camera, gradul de culoare, tranzitia, si fie un B-roll (inset), fie un efect de evidentiere - NICIODATA ambele in aceeasi scena. '
+    +'Returneaza STRICT JSON, fara alt text, pastrand numerele "n" exact cum sunt date:\n'
+    +'{"scenes":[{"n":1,"duration_weight":1.2,"era":"1920s Prohibition era","visual":"smoky speakeasy, period clothing","motion":"zoom_in","grade":"warm_sepia","transition":"crossfade","broll":true,"broll_subject":"a 1920s newspaper headline about the raid","broll_cue":"the morning headlines","emphasis":"none","focus":null,"emphasis_cue":""}]}\n'
+    +'motion: '+MOTIONS.join('|')+' . grade: '+GRADE_KEYS.join('|')+' . transition: crossfade|fadeblack|cut|zoom . emphasis: none|'+EMPHASIS.join('|')+' . '
+    +'Efectele de evidentiere sunt CINEMATICE si se imbina cu imaginea (spotlight, blur de fundal, dolly punch, izolare de culoare, raze de lumina, glow, bare cinematice) - fara sageti, cercuri sau linii. '
+    +'focus = {"x":0..1,"y":0..1,"w":0..1,"h":0..1} zona de evidentiat / subiectul principal din cadru (doar cand emphasis != none). '
+    +'REGULI: "era" si "visual" se deduc STRICT din continutul scenei; daca scena descrie alta perioada, schimba grade/visual corespunzator. '
+    +'"broll_subject" = element concret explicit din ACEA scena (obiect/loc/persoana/harta/document), niciodata generic. "broll_cue" si "emphasis_cue" = un cuvant/expresie care exista LITERAL in textul scenei. '
+    +'Pune B-roll sau emphasis doar in ~25-40% din scene, distribuite natural, fara doua consecutive. Alege miscari mai dramatice (zoom_in/zoom_out, dolly_punch) pe momente de tensiune, lente (focus_pull, soft_glow) pe momente calme.\n'
+    +'Scenele:\n';
+}
+function applyDirectorItem(it){
+  const i=(it.n|0)-1; const sc=scenes[i]; if(!sc) return;
+  sc.weight=Math.max(0.4,Math.min(2.5,+it.duration_weight||1));
+  if(it.era) sc.era=String(it.era).slice(0,80);
+  if(it.visual) sc.visual=String(it.visual).slice(0,160);
+  if(MOTIONS.includes(it.motion)) sc.motion=it.motion;
+  if(GRADES[it.grade]) sc.grade=it.grade;
+  if(['crossfade','fadeblack','cut','zoom'].includes(it.transition)) sc.transition=it.transition;
+  if(sc.manual) return;
+  const emph = EMPHASIS.includes(it.emphasis) ? it.emphasis : '';
+  if(it.broll && !emph){
+    sc.broll=true; sc.emphasis=''; sc.focus=null;
+    sc.subject=it.broll_subject||''; sc.cue=it.broll_cue||'';
+  }else if(emph){
+    sc.emphasis=emph; sc.broll=false; sc.emphasisCue=it.emphasis_cue||'';
+    sc.focus=(it.focus&&typeof it.focus.x==='number')?{x:it.focus.x,y:it.focus.y,w:it.focus.w||0.34,h:it.focus.h||0.4}:{x:0.5,y:0.45,w:0.34,h:0.4};
+  }
+  sc.prompt=buildPrompt(sc.text, sc);
+  sc.aiDefaults={broll:sc.broll,subject:sc.subject,cue:sc.cue,emphasis:sc.emphasis,focus:sc.focus,emphasisCue:sc.emphasisCue,grade:sc.grade,motion:sc.motion};
+}
 $('aiDirector').onclick=async()=>{
   if(!scenes.length){toast('Segmenteaza scriptul intai (sau transcrie pe voiceover).',true);return;}
   $('aiDirector').disabled=true; $('genStat').textContent='AI Director analizeaza scriptul...';
   try{
-    const numbered=scenes.map((s,i)=>(i+1)+'. '+s.text).join('\n');
-    const prompt='Esti editor video + colorist de documentar profesionist. Primesti un script pe scene numerotate. '
-      +'Pentru FIECARE scena decide, ca un editor: durata relativa, EPOCA/contextul dedus din text, subiectul vizual concret, miscarea de camera, gradul de culoare, tranzitia, si fie un B-roll (inset), fie un efect de evidentiere - NICIODATA ambele in aceeasi scena. '
-      +'Returneaza STRICT JSON, fara alt text:\n'
-      +'{"scenes":[{"n":1,"duration_weight":1.2,"era":"1920s Prohibition era","visual":"smoky speakeasy, period clothing","motion":"zoom_in","grade":"warm_sepia","transition":"crossfade","broll":true,"broll_subject":"a 1920s newspaper headline about the raid","broll_cue":"the morning headlines","emphasis":"none","focus":null,"emphasis_cue":""}]}\n'
-      +'motion: '+MOTIONS.join('|')+' . grade: '+GRADE_KEYS.join('|')+' . transition: crossfade|fadeblack|cut|zoom . emphasis: none|'+EMPHASIS.join('|')+' . '
-      +'Efectele de evidentiere sunt CINEMATICE si se imbina cu imaginea (spotlight, blur de fundal, dolly punch, izolare de culoare, raze de lumina, glow, bare cinematice) - fara sageti, cercuri sau linii. '
-      +'focus = {"x":0..1,"y":0..1,"w":0..1,"h":0..1} zona de evidentiat / subiectul principal din cadru (doar cand emphasis != none). '
-      +'REGULI: "era" si "visual" se deduc STRICT din continutul scenei (perioada, loc, moment); daca scena descrie alta perioada, schimba grade/visual corespunzator. '
-      +'"broll_subject" = element concret explicit din ACEA scena (obiect/loc/persoana/harta/document), niciodata generic. "broll_cue" si "emphasis_cue" = un cuvant/expresie care exista LITERAL in textul scenei, pe care sa se declanseze efectul (sincronizare pe voiceover). '
-      +'Pune B-roll sau emphasis doar in ~25-40% din scene, distribuite natural, fara doua consecutive. Alege miscari mai dramatice (zoom_in/zoom_out, dolly_punch) pe momente de tensiune, lente (focus_pull, soft_glow) pe momente calme.\n'
-      +'Scenele:\n'+numbered;
-    let out=await geminiText(prompt);
-    out=out.replace(/```json/gi,'').replace(/```/g,'').trim();
-    const m=out.match(/\{[\s\S]*\}/); if(!m) throw new Error('Raspuns invalid de la AI.');
-    const data=JSON.parse(m[0]);
     scenes.forEach(s=>{ if(!s.manual){ s.broll=false; s.emphasis=''; s.focus=null; } });
-    (data.scenes||[]).forEach(it=>{
-      const i=(it.n|0)-1; const sc=scenes[i]; if(!sc) return;
-      sc.weight=Math.max(0.4,Math.min(2.5,+it.duration_weight||1));
-      if(it.era) sc.era=String(it.era).slice(0,80);
-      if(it.visual) sc.visual=String(it.visual).slice(0,160);
-      if(MOTIONS.includes(it.motion)) sc.motion=it.motion;
-      if(GRADES[it.grade]) sc.grade=it.grade;
-      if(['crossfade','fadeblack','cut','zoom'].includes(it.transition)) sc.transition=it.transition;
-      if(sc.manual) return;
-      const emph = EMPHASIS.includes(it.emphasis) ? it.emphasis : '';
-      if(it.broll && !emph){
-        sc.broll=true; sc.emphasis=''; sc.focus=null;
-        sc.subject=it.broll_subject||''; sc.cue=it.broll_cue||'';
-      }else if(emph){
-        sc.emphasis=emph; sc.broll=false; sc.emphasisCue=it.emphasis_cue||'';
-        sc.focus=(it.focus&&typeof it.focus.x==='number')?{x:it.focus.x,y:it.focus.y,w:it.focus.w||0.34,h:it.focus.h||0.4}:{x:0.5,y:0.45,w:0.34,h:0.4};
-      }
-      sc.prompt=buildPrompt(sc.text, sc);
-      sc.aiDefaults={broll:sc.broll,subject:sc.subject,cue:sc.cue,emphasis:sc.emphasis,focus:sc.focus,emphasisCue:sc.emphasisCue,grade:sc.grade,motion:sc.motion};
-    });
-    recalcDurations();
-    assignMotions();
-    applyInsetVariety();
+    const BATCH=24; let done=0, failed=0;
+    for(let b=0;b<scenes.length;b+=BATCH){
+      const end=Math.min(b+BATCH,scenes.length);
+      $('genStat').textContent='AI Director... scene '+(b+1)+'-'+end+' / '+scenes.length;
+      const numbered=scenes.slice(b,end).map((s,i)=>(b+i+1)+'. '+s.text).join('\n');
+      try{
+        let out=await geminiText(aiDirectorPromptHead()+numbered);
+        out=out.replace(/```json/gi,'').replace(/```/g,'').trim();
+        const m=out.match(/\{[\s\S]*\}/); if(!m){ failed++; continue; }
+        let data; try{ data=JSON.parse(m[0]); }catch(pe){ failed++; continue; }
+        (data.scenes||[]).forEach(applyDirectorItem); done++;
+      }catch(be){ failed++; }
+    }
+    recalcDurations(); assignMotions(); applyInsetVariety();
     const nb=scenes.filter(s=>s.broll).length, ne=scenes.filter(s=>s.emphasis).length;
-    $('genStat').textContent='AI Director: '+nb+' B-roll, '+ne+' evidentieri premium, grade+epoca pe scena. Genereaza imaginile.';
+    if(done===0) throw new Error('niciun lot procesat (model indisponibil). Reincearca.');
+    $('genStat').textContent='AI Director: '+nb+' B-roll, '+ne+' evidentieri, grade+epoca pe scena'+(failed?(' ('+failed+' loturi sarite)'):'')+'. Genereaza imaginile.';
     renderScenes();
-  }catch(e){ $('genStat').textContent='AI Director eroare: '+e.message; }
+  }catch(e){ $('genStat').textContent='AI Director eroare: '+e.message; toast('AI Director: '+e.message,true); }
   finally{ $('aiDirector').disabled=false; }
 };
 

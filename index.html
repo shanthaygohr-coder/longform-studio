@@ -1725,10 +1725,11 @@ async function exportTurbo(fps,bitrate){
   let audioBuf=null; if(!!audioURL||$('sfx').checked){ try{ audioBuf=await renderMixedAudio(); }catch(e){ audioBuf=null; } }
   const muxer=new Muxer({target:new ArrayBufferTarget(),video:{codec:'V_VP9',width:W,height:H,frameRate:fps},
     audio:audioBuf?{codec:'A_OPUS',numberOfChannels:audioBuf.numberOfChannels,sampleRate:audioBuf.sampleRate}:undefined,firstTimestampBehavior:'offset'});
-  const venc=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{throw e;}});
+  let encErr=null;
+  const venc=new VideoEncoder({output:(c,m)=>muxer.addVideoChunk(c,m),error:e=>{ encErr=e; }});
   venc.configure({codec:'vp09.00.10.08',width:W,height:H,bitrate:bitrate,framerate:fps});
   if(audioBuf){
-    const aenc=new AudioEncoder({output:(c,m)=>muxer.addAudioChunk(c,m),error:e=>{throw e;}});
+    const aenc=new AudioEncoder({output:(c,m)=>muxer.addAudioChunk(c,m),error:e=>{ encErr=e; }});
     const nCh=audioBuf.numberOfChannels, sr=audioBuf.sampleRate; aenc.configure({codec:'opus',numberOfChannels:nCh,sampleRate:sr,bitrate:128000});
     const chans=[]; for(let c=0;c<nCh;c++) chans.push(audioBuf.getChannelData(c));
     const block=4096,total=audioBuf.length;
@@ -1739,6 +1740,7 @@ async function exportTurbo(fps,bitrate){
   }
   const totalFrames=Math.ceil(totalDur*fps); lastScene=-1;
   for(let i=0;i<totalFrames;i++){
+    if(encErr) throw new Error('encoder: '+(encErr.message||encErr));
     while(venc.encodeQueueSize>2){ await new Promise(r=>setTimeout(r,0)); }
     drawFrame(i/fps);
     const frame=new VideoFrame(cv,{timestamp:Math.round(i*1e6/fps),duration:Math.round(1e6/fps)});
@@ -1746,6 +1748,7 @@ async function exportTurbo(fps,bitrate){
     await new Promise(r=>setTimeout(r,0));
     if(i%fps===0){ $('renderBar').style.width=(i/totalFrames*100)+'%'; $('renderStat').textContent='Turbo \u00b7 frame '+i+'/'+totalFrames+' ('+Math.round(i/totalFrames*100)+'%)'; }
   }
+  if(encErr) throw new Error('encoder: '+(encErr.message||encErr));
   await venc.flush(); muxer.finalize();
   const blob=new Blob([muxer.target.buffer],{type:'video/webm'});
   showResultVideo(blob);
@@ -1764,7 +1767,7 @@ $('export').onclick=async()=>{
         try{ await exportTurbo(fps,bitrate); return; }
         catch(te){ $('renderStat').textContent='Turbo a esuat ('+te.message+') -> real-time.'; toast('Turbo a esuat -> real-time.',true); }
       }else{ $('renderStat').textContent='Muxer indisponibil -> real-time.'; toast('Muxer indisponibil -> real-time.',true); }
-    }
+    } else if(mode!=='realtime'){ toast('WebCodecs indisponibil aici -> real-time.'); }
     await exportRealtime(fps,bitrate);
   }catch(e){ $('renderStat').textContent='Eroare export: '+e.message; toast('Eroare export: '+e.message,true); }
   finally{ $('export').disabled=false; }

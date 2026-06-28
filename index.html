@@ -1165,12 +1165,14 @@ $('segment').onclick=()=>{
 };
 
 /* ---------- AI DIRECTOR (editor profesionist) ---------- */
+function nicheEmphasisList(){ return NICHE_EMPHASIS[nicheSel.value] || EMPHASIS; }
 function aiDirectorPromptHead(){
+  const allow=nicheEmphasisList();
   return 'Esti editor video + colorist de documentar profesionist. Primesti un script pe scene numerotate. '
     +'Pentru FIECARE scena decide, ca un editor: durata relativa, EPOCA/contextul dedus din text, subiectul vizual concret, miscarea de camera, gradul de culoare, tranzitia, si fie un B-roll (inset), fie un efect de evidentiere - NICIODATA ambele in aceeasi scena. '
     +'Returneaza STRICT JSON, fara alt text, pastrand numerele "n" exact cum sunt date:\n'
     +'{"scenes":[{"n":1,"duration_weight":1.2,"era":"1920s Prohibition era","visual":"smoky speakeasy, period clothing","motion":"zoom_in","grade":"warm_sepia","transition":"crossfade","broll":true,"broll_subject":"a 1920s newspaper headline about the raid","broll_cue":"the morning headlines","emphasis":"none","focus":null,"emphasis_cue":""}]}\n'
-    +'motion: '+MOTIONS.join('|')+' . grade: '+GRADE_KEYS.join('|')+' . transition: crossfade|fadeblack|cut|zoom . emphasis: none|'+EMPHASIS.join('|')+' . '
+    +'motion: '+MOTIONS.join('|')+' . grade: '+GRADE_KEYS.join('|')+' . transition: crossfade|fadeblack|cut|zoom . emphasis: none|'+allow.join('|')+' (foloseste DOAR aceste efecte, sunt specifice nisei). '
     +'Efectele de evidentiere sunt CINEMATICE si se imbina cu imaginea (spotlight, blur de fundal, dolly punch, izolare de culoare, raze de lumina, glow, bare cinematice) - fara sageti, cercuri sau linii. '
     +'focus = {"x":0..1,"y":0..1,"w":0..1,"h":0..1} zona de evidentiat / subiectul principal din cadru (doar cand emphasis != none). '
     +'REGULI: "era" si "visual" se deduc STRICT din continutul scenei; daca scena descrie alta perioada, schimba grade/visual corespunzator. '
@@ -1187,7 +1189,8 @@ function applyDirectorItem(it){
   if(GRADES[it.grade]) sc.grade=it.grade;
   if(['crossfade','fadeblack','cut','zoom'].includes(it.transition)) sc.transition=it.transition;
   if(sc.manual) return;
-  const emph = EMPHASIS.includes(it.emphasis) ? it.emphasis : '';
+  let emph = EMPHASIS.includes(it.emphasis) ? it.emphasis : '';
+  if(emph){ const allow=nicheEmphasisList(); if(!allow.includes(emph)) emph=allow[((it.n|0))%allow.length]; } /* efect specific nisei */
   if(it.broll && !emph){
     sc.broll=true; sc.emphasis=''; sc.focus=null;
     sc.subject=it.broll_subject||''; sc.cue=it.broll_cue||'';

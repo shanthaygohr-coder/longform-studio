@@ -727,28 +727,28 @@ const NICHE_EMPHASIS={
 const PUSH_EMPHASIS=Object.keys(EFFECTS).filter(k=>EFFECTS[k].push);
 
 /* ---------- B-ROLL: intrari / iesiri / forme ---------- */
-const BROLL_IN=['float_in','rotate_in','flip_in','slide_bounce','zoom_pop','swing_in','iris_in','dust_dissolve','light_sweep','parallax_push','paper_drop'];
+const BROLL_IN=['float_in','rotate_in','flip_in','slide_bounce','zoom_pop','swing_in','iris_in','dust_dissolve','light_sweep','parallax_push','paper_drop','rise_up'];
 const BROLL_SHAPE=['rectangle','rounded','circle','polaroid','torn_paper','film_strip','vignette_soft'];
 const NICHE_BROLL_FX={
   crime:{in:['paper_drop','slide_bounce','float_in','zoom_pop','light_sweep'], shape:['polaroid','rectangle','torn_paper'], sfx:'shutter'},
   mystery:{in:['float_in','iris_in','dust_dissolve','rotate_in','swing_in'], shape:['vignette_soft','circle','rounded'], sfx:'mystery'},
-  history:{in:['paper_drop','swing_in','flip_in','dust_dissolve','float_in'], shape:['torn_paper','polaroid','film_strip'], sfx:'paper'},
-  mythology:{in:['light_sweep','zoom_pop','rotate_in','float_in','iris_in'], shape:['rounded','circle','rectangle'], sfx:'paper'},
+  history:{in:['rise_up','paper_drop','swing_in','flip_in','dust_dissolve','float_in'], shape:['torn_paper','polaroid','film_strip'], sfx:'paper'},
+  mythology:{in:['rise_up','light_sweep','zoom_pop','rotate_in','float_in','iris_in'], shape:['rounded','circle','rectangle'], sfx:'paper'},
   horror:{in:['dust_dissolve','zoom_pop','slide_bounce','flip_in','swing_in'], shape:['rectangle','torn_paper','vignette_soft'], sfx:'whoosh'},
   sleep:{in:['float_in','dust_dissolve','iris_in','light_sweep','parallax_push'], shape:['rounded','vignette_soft','circle'], sfx:'soft'},
   space:{in:['light_sweep','zoom_pop','parallax_push','iris_in','rotate_in'], shape:['rounded','circle','rectangle'], sfx:'whoosh'},
-  finance:{in:['slide_bounce','flip_in','zoom_pop','parallax_push','light_sweep'], shape:['rounded','rectangle','film_strip'], sfx:'shutter'},
-  storytelling:{in:['float_in','parallax_push','flip_in','zoom_pop','swing_in'], shape:['polaroid','rounded','rectangle'], sfx:'whoosh'},
-  wildlife:{in:['float_in','iris_in','parallax_push','light_sweep','dust_dissolve'], shape:['rounded','circle','rectangle'], sfx:'paper'},
+  finance:{in:['rise_up','slide_bounce','flip_in','zoom_pop','parallax_push','light_sweep'], shape:['rounded','rectangle','film_strip'], sfx:'shutter'},
+  storytelling:{in:['rise_up','float_in','parallax_push','flip_in','zoom_pop','swing_in'], shape:['polaroid','rounded','rectangle'], sfx:'whoosh'},
+  wildlife:{in:['rise_up','float_in','iris_in','parallax_push','light_sweep','dust_dissolve'], shape:['rounded','circle','rectangle'], sfx:'paper'},
   psychology:{in:['float_in','iris_in','dust_dissolve','light_sweep','parallax_push'], shape:['vignette_soft','rounded','circle'], sfx:'mystery'},
   philosophy:{in:['swing_in','paper_drop','float_in','dust_dissolve','light_sweep'], shape:['torn_paper','polaroid','rounded'], sfx:'paper'},
   geopolitics:{in:['slide_bounce','parallax_push','flip_in','light_sweep','zoom_pop'], shape:['rectangle','rounded','film_strip'], sfx:'shutter'},
 };
 const IN_SFX={paper_drop:'paper',slide_bounce:'thud',zoom_pop:'pop',flip_in:'swish',swing_in:'creak',
-  iris_in:'shimmer',dust_dissolve:'soft',light_sweep:'shimmer',rotate_in:'swish',parallax_push:'whoosh',float_in:'soft'};
+  iris_in:'shimmer',dust_dissolve:'soft',light_sweep:'shimmer',rotate_in:'swish',parallax_push:'whoosh',float_in:'soft',rise_up:'soft'};
 const IN_OUT={paper_drop:'slide_out',slide_bounce:'slide_out',zoom_pop:'shrink_pop',flip_in:'shrink_pop',
   swing_in:'swing_out',iris_in:'iris_close',dust_dissolve:'dissolve',light_sweep:'fade_soft',
-  rotate_in:'swing_out',parallax_push:'fade_soft',float_in:'float_out'};
+  rotate_in:'swing_out',parallax_push:'fade_soft',float_in:'float_out',rise_up:'sink_down'};
 
 
 /* ---------- VARIETATE: miscare per scena ---------- */
@@ -1505,9 +1505,11 @@ function drawInset(idx,sc,local){
     else if(anim==='light_sweep'){ alpha=Math.min(1,e*1.3); sweep=(phase==='in')?(local-inStart)/inDur:2; }
     else if(anim==='parallax_push'){ alpha=e; sx=sy=0.98+0.06*e; }
     else if(anim==='paper_drop'){ alpha=Math.min(1,e*1.4); oy=-(1-e)*bh*0.8; rot=(1-e)*0.06*dirx; }
+    else if(anim==='rise_up'){ alpha=Math.min(1,e*1.5); oy=(1-e)*bh*1.15; sx=sy=0.96+0.04*e; }
     else { alpha=e; }
   } else {
     if(outAnim==='float_out'){ alpha=e; oy=-(1-e)*30; }
+    else if(outAnim==='sink_down'){ alpha=e; oy=(1-e)*bh*1.0; }
     else if(outAnim==='shrink_pop'){ alpha=e; sx=sy=Math.max(0.02,e); }
     else if(outAnim==='slide_out'){ alpha=Math.min(1,e*1.3); ox=dirx*(1-e)*bw*0.7; }
     else if(outAnim==='swing_out'){ alpha=e; rot=(1-e)*0.3*dirx; }
